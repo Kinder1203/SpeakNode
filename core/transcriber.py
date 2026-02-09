@@ -42,8 +42,19 @@ class Transcriber:
         
         # Transcribe 실행 (beam_size=5로 정확도 확보)
         # language="ko"를 지정하면 한국어 인식률이 더 올라갑니다.
-        segments, info = self.model.transcribe(audio_path, beam_size=5, language="ko")
-        
+        segments, info = self.model.transcribe(
+            audio_path, 
+            beam_size=5, 
+            language="ko",
+            # 1. VAD 필터를 끄거나, 임계값을 조절합니다.
+            vad_filter=True, 
+            vad_parameters=dict(
+                min_silence_duration_ms=1000, # 1초 이상 조용해야 분리 (기존 500ms는 너무 짧음)
+                threshold=0.3                # 소리가 작아도 음성으로 인식하도록 문턱값 낮춤
+            ),
+            # 2. 문장 중간에 끊기는 걸 방지하기 위해 추가
+            condition_on_previous_text=True 
+        )  
         print(f"   ℹ️ Detected language: '{info.language}' (Probability: {info.language_probability:.2f})")
         
         # Generator를 리스트로 변환 (DB 저장용 포맷팅)
@@ -80,7 +91,7 @@ if __name__ == "__main__":
         
         # 4. 결과 확인
         print("\n--- [Final Result Sample] ---")
-        print(results[:3] if results else "No result") # 앞부분 3개만 출력
+        print(results[:] if results else "No result") # 앞부분 3개만 출력
     else:
         print(f"❌ '{TEST_FILE}' not found. Please upload it via runpodctl.")
         print("Tip: runpodctl send test_audio.mp3")
