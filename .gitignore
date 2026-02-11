@@ -1,16 +1,47 @@
+# Python virtual environments
 venv/
 env/
 .venv/
-.env
+
+# Python cache/compiled artifacts
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+
+# Test/lint/type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment files (keep example files trackable)
+.env
+.env.*
+!.env.example
+
+# Local databases and generated data
 database/
 *.kuzu
+*.sqlite
+*.sqlite3
+*.db
+
+# Media/generated uploads
+temp_uploads/
+shared_cards/
 *.mp3
 *.wav
 *.m4a
-temp_uploads/
-.DS_Store
-*.log
-shared_cards/
 *.png
+
+# Logs and temp files
+*.log
+*.tmp
+*.bak
+
+# Editor/OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
