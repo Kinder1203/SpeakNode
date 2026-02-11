@@ -100,11 +100,14 @@ def render_graph_view(db_path):
 
         net.toggle_physics(True)
         path = "graph.html"
-        net.save_graph(path)
+        net.save_graph("graph.html")
         with open(path, 'r', encoding='utf-8') as f:
             components.html(f.read(), height=550)
     except Exception as e:
         st.error(f"그래프 렌더링 오류: {e}")
+    finally:
+        if conn: del conn
+        if db: del db
 
 def generate_static_graph_image(db_path, analysis_json):
     """지식 그래프를 PNG 이미지로 저장 (Task 노드 누락 수정됨)"""

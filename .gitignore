@@ -13,4 +13,6 @@ database/
 temp_uploads/
 .DS_Store
 .shared_cards/
-*.png
+.shared_cards
+.png
+png/

@@ -41,7 +41,7 @@ with st.sidebar:
     # 여기서는 편의를 위해 사이드바 아래쪽에 배치하거나, 오디오가 없을 때 메인에 띄웁니다.
     
     st.subheader("⚙️ System Settings")
-    st.info(f"**Model:* *qwen2.5:14b")
+    st.info(f"**Model:** qwen2.5:14b") # 오타 수정: **Model:** 로 변경
     
     if st.button("🗑️ DB 초기화", type="secondary"):
         try:

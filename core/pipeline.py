@@ -66,7 +66,10 @@ class SpeakNodeEngine:
         # 3. DB 적재
         print("   Processing Step 3: Knowledge Graph Ingestion...")
         db = KuzuManager(db_path=self.db_path)
-        db.ingest_data(analysis_data)
+        try:
+            db.ingest_data(analysis_data)
+        finally:
+            db.close() # 작업 완료 후 명시적으로 닫기
         
         print("✅ [Pipeline] 분석 및 저장 완료")
         return analysis_data
