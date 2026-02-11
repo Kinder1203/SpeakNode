@@ -6,13 +6,11 @@ __pycache__/
 *.pyc
 database/
 *.kuzu
-*.log
 *.mp3
 *.wav
 *.m4a
 temp_uploads/
 .DS_Store
-.shared_cards/
-.shared_cards
-.png
-png/
+*.log
+shared_cards/
+*.png

@@ -58,7 +58,7 @@ Hard rules:
             
             if not title: continue
             topics.append({
-                "title": title, 
+                "title": title,
                 "summary": summary,
                 "proposer": proposer
             })
