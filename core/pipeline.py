@@ -1,70 +1,59 @@
 import os
-import time
-# 우리가 만든 부품들 가져오기
-from core.transcriber import Transcriber
-from core.extractor import Extractor
+import json
 
-class MeetingPipeline:
-    def __init__(self):
-        print("🔧 [Pipeline] Initializing AI Engine...")
-        
-        # 1. 귀 장착 (STT) - GPU 사용
-        self.ear = Transcriber(model_size="large-v3")
-        
-        # 2. 뇌 장착 (LLM) - RunPod 내부 Ollama 사용
-        # (RunPod 내부에서 도는 거라 localhost로 연결하면 됨)
-        self.brain = Extractor(model_name="deepseek-r1:14b")
-        
-        print("✅ [Pipeline] Engine Ready!")
+try:
+    # 1. Streamlit(외부)에서 실행될 때: "내 옆(.)에 있는 파일"이라고 명시
+    from .transcriber import Transcriber
+    from .extractor import Extractor
+    from .kuzu_manager import KuzuManager
+    from .share_manager import ShareManager
+except ImportError:
+    # 2. pipeline.py 직접 실행할 때: "그냥 이름"으로 찾음
+    from transcriber import Transcriber
+    from extractor import Extractor
+    from kuzu_manager import KuzuManager
+    from share_manager import ShareManager
 
-    def process_meeting(self, audio_path):
-        """
-        오디오 -> 텍스트 -> 구조화 데이터 (Full Process)
-        """
-        start_time = time.time()
-        print(f"\n🚀 [Pipeline] Processing Start: {audio_path}")
-
-        # Step 1: 듣기 (Transcribe)
-        transcript_segments = self.ear.transcribe(audio_path)
-        if not transcript_segments:
-            return None
-
-        # Step 2: 텍스트 합치기 (LLM에게 줄 요약본 만들기)
-        # (세그먼트들을 하나의 긴 문자열로 합침)
-        full_text = " ".join([seg['text'] for seg in transcript_segments])
-        print(f"📜 [Pipeline] Full Text Length: {len(full_text)} chars")
-
-        # Step 3: 생각하기 (Extract)
-        structured_data = self.brain.extract(full_text)
-
-        # Step 4: 결과 정리
-        final_result = {
-            "meta": {
-                "audio_file": os.path.basename(audio_path),
-                "processing_time": round(time.time() - start_time, 2),
-                "transcript_length": len(transcript_segments)
-            },
-            "transcript": transcript_segments, # 원본 대화 내용 (타임스탬프 포함)
-            "analysis": structured_data        # 분석된 내용 (주제, 할일 등)
-        }
-
-        print(f"✨ [Pipeline] All Done in {final_result['meta']['processing_time']}s")
-        return final_result
-
-# ==========================================
-# 🧪 최종 통합 테스트
-# ==========================================
-if __name__ == "__main__":
-    # 테스트 파일 (아까 이름 바꾼 그 파일)
-    TEST_FILE = "test_audio.mp3"
+def main(audio_path):
+    print(f"🚀 [SpeakNode] 파이프라인 시작: {audio_path}")
     
-    if os.path.exists(TEST_FILE):
-        pipeline = MeetingPipeline()
-        result = pipeline.process_meeting(TEST_FILE)
-        
-        import json
-        print("\n🎉 [Final Pipeline Result] 🎉")
-        # 한글 깨짐 방지해서 예쁘게 출력
-        print(json.dumps(result, indent=2, ensure_ascii=False))
+    # 1. 초기화
+    transcriber = Transcriber()
+    extractor = Extractor()
+    db_manager = KuzuManager()
+
+    # 2. STT (듣기)
+    print("👂 음성 인식 중...")
+    transcript_list = transcriber.transcribe(audio_path)
+    # transcript_list는 [{"start":..., "text":...}, ...] 형태의 리스트임
+
+    if not transcript_list:
+        print("❌ 음성 인식 결과가 없습니다.")
+        return
+
+    # [수정] 리스트에 있는 모든 문장을 하나로 합침
+    full_text = " ".join([seg['text'] for seg in transcript_list])
+    print(f"📝 추출된 텍스트 길이: {len(full_text)}자")
+    
+    # 3. LLM Extraction (생각하기)
+    print("🧠 회의 내용 분석 중...")
+    analysis_result = extractor.extract(full_text) # 합친 텍스트를 전달
+    
+    # 4. DB Ingestion (기억하기)
+    print("💾 그래프 DB에 저장 중...")
+    db_manager.ingest_data(analysis_result)
+
+    #5. 공유용 이미지 생성 (Phase 4)
+    print("🖼️ 공유용 이미지 카드 생성 중...")
+    share_manager = ShareManager()
+    share_manager.create_card(analysis_result, filename="latest_summary.png")
+    
+    print("✅ 모든 작업 완료!")
+    return analysis_result
+
+if __name__ == "__main__":
+    target_file = "../test_audio.mp3" 
+    if os.path.exists(target_file):
+        main(target_file)
     else:
-        print(f"❌ File not found: {TEST_FILE}")
+        print(f"파일을 찾을 수 없습니다: {target_file}")
