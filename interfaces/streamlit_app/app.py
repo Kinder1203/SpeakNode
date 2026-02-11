@@ -3,6 +3,7 @@ import os
 import sys
 import shutil
 import time
+import re
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
@@ -15,7 +16,8 @@ from core.kuzu_manager import KuzuManager
 
 # --- 앱 기본 설정 ---
 st.set_page_config(page_title="SpeakNode Dashboard", layout="wide")
-DB_PATH = os.path.join(project_root, "database", "speaknode.kuzu")
+CHAT_DB_DIR = os.path.join(project_root, "database", "chats")
+os.makedirs(CHAT_DB_DIR, exist_ok=True)
 share_mgr = ShareManager()
 
 # --- 엔진 캐싱 ---
@@ -26,6 +28,25 @@ def get_engine():
 # --- 세션 상태 초기화 ---
 if 'analysis_result' not in st.session_state:
     st.session_state['analysis_result'] = None
+if "active_chat_id" not in st.session_state:
+    st.session_state["active_chat_id"] = "default"
+
+
+def sanitize_chat_id(raw: str) -> str:
+    safe = re.sub(r"[^0-9A-Za-z_-]+", "_", (raw or "").strip()).strip("_")
+    return safe or "default"
+
+
+def list_chat_ids() -> list[str]:
+    chat_ids = []
+    for name in os.listdir(CHAT_DB_DIR):
+        if name.endswith(".kuzu"):
+            chat_ids.append(name[:-5])
+    return sorted(chat_ids)
+
+
+def get_chat_db_path(chat_id: str) -> str:
+    return os.path.join(CHAT_DB_DIR, f"{sanitize_chat_id(chat_id)}.kuzu")
 
 # --- [사이드바] 파일 업로드 및 설정 ---
 vc.render_header()
@@ -36,23 +57,49 @@ with st.sidebar:
     uploaded_audio = st.file_uploader("회의 녹음 파일 (분석용)", type=["mp3", "wav", "m4a"])
     
     st.divider()
-    
-    # PNG 업로드 (복원용) - 사이드바에 통합하거나 메인화면에 둘 수 있음.
-    # 여기서는 편의를 위해 사이드바 아래쪽에 배치하거나, 오디오가 없을 때 메인에 띄웁니다.
-    
+    st.subheader("💬 Chat Sessions")
+
+    chat_ids = list_chat_ids()
+    active_chat_id = sanitize_chat_id(st.session_state["active_chat_id"])
+    if active_chat_id not in chat_ids:
+        chat_ids = [active_chat_id] + chat_ids
+
+    selected_chat_id = st.selectbox(
+        "채팅 선택",
+        options=chat_ids if chat_ids else ["default"],
+        index=(chat_ids.index(active_chat_id) if chat_ids else 0),
+        help="같은 채팅은 누적 저장, 다른 채팅은 다른 DB를 사용합니다.",
+    )
+
+    if selected_chat_id != st.session_state["active_chat_id"]:
+        st.session_state["active_chat_id"] = selected_chat_id
+        st.session_state["analysis_result"] = None
+        st.rerun()
+
+    new_chat_name = st.text_input("새 채팅 이름", placeholder="예: genomics_review")
+    if st.button("➕ 새 채팅 생성", use_container_width=True):
+        new_chat_id = sanitize_chat_id(new_chat_name)
+        st.session_state["active_chat_id"] = new_chat_id
+        st.session_state["analysis_result"] = None
+        st.success(f"채팅 '{new_chat_id}' 생성 완료")
+        st.rerun()
+
+    current_db_path = get_chat_db_path(st.session_state["active_chat_id"])
+
+    st.divider()
     st.subheader("⚙️ System Settings")
-    st.info(f"**Model:** qwen2.5:14b") # 오타 수정: **Model:** 로 변경
-    
-    if st.button("🗑️ DB 초기화", type="secondary"):
+    st.info(f"**Model:** qwen2.5:14b\n\n**Active Chat:** {st.session_state['active_chat_id']}")
+
+    if st.button("🗑️ 현재 채팅 DB 초기화", type="secondary"):
         try:
             st.session_state['analysis_result'] = None
-            if os.path.exists(DB_PATH):
+            if os.path.exists(current_db_path):
                 time.sleep(0.1)
-                if os.path.isfile(DB_PATH):
-                    os.remove(DB_PATH)
+                if os.path.isfile(current_db_path):
+                    os.remove(current_db_path)
                 else:
-                    shutil.rmtree(DB_PATH)
-            st.success("DB가 초기화되었습니다.")
+                    shutil.rmtree(current_db_path)
+            st.success("현재 채팅 DB가 초기화되었습니다.")
             time.sleep(0.5)
             st.rerun()
         except Exception as e:
@@ -72,7 +119,7 @@ if uploaded_audio:
         with st.status("🔍 분석 중...", expanded=True) as status:
             engine = get_engine()
             try:
-                result = engine.process(temp_audio)
+                result = engine.process(temp_audio, db_path=current_db_path)
                 st.session_state['analysis_result'] = result
                 
                 if result:
@@ -89,23 +136,24 @@ if uploaded_audio:
 
 # --- [메인 로직] 2. 복원 (오디오 없을 때 PNG 업로드) ---
 elif not st.session_state['analysis_result']: 
-    # 결과도 없고 오디오도 없으면 -> "파일을 올리거나 복원하세요" 화면
-    st.info("좌측에서 **회의 녹음 파일**을 업로드하거나, 아래에서 **지식 그래프 이미지**를 업로드하여 복원하세요.")
+    st.info("회의 파일을 업로드하거나, 기존 그래프 이미지를 통해 복원하세요.")
     
-    # PNG 복원 UI
     restored_data = vc.render_import_card_ui(share_mgr)
     if restored_data:
-        # 데이터가 복원되면 바로 세션에 넣고 리런! (버튼 불필요)
         st.session_state['analysis_result'] = restored_data
         
-        # DB에도 반영 (선택사항, 그래프 뷰를 위해 필요)
+        # [Medium Fix] KuzuManager 인스턴스 생성 및 명시적 종료
+        db_mgr = None
         try:
-            db = KuzuManager(DB_PATH)
-            db.ingest_data(restored_data)
-        except Exception:
-            pass # 이미 있을 수 있음
+            db_mgr = KuzuManager(current_db_path)
+            db_mgr.ingest_data(restored_data)
+            st.success("✅ 데이터 복원 및 DB 동기화 완료!")
+        except Exception as e:
+            st.error(f"❌ DB 복원 중 오류: {e}")
+        finally:
+            if db_mgr:
+                db_mgr.close() # 리소스 해제
             
-        st.success("✅ 데이터 복원 완료! 대시보드를 불러옵니다...")
         time.sleep(0.5)
         st.rerun()
 
@@ -119,13 +167,14 @@ if st.session_state['analysis_result']:
     c1, c2 = st.columns([2, 1])
     
     with c1:
-        # DB 경로에 데이터가 있어야 그래프가 그려짐. 
-        # 복원 직후라면 위에서 ingest_data를 했으므로 정상 작동.
-        vc.render_graph_view(DB_PATH)
+        if os.path.exists(current_db_path):
+            vc.render_graph_view(current_db_path)
+        else:
+            st.info("현재 채팅에는 아직 저장된 그래프 데이터가 없습니다.")
         
     with c2:
         st.subheader("💾 저장")
         st.info("현재 결과를 지식 그래프 이미지로 저장합니다.")
-        buf = vc.generate_static_graph_image(DB_PATH, result)
+        buf = vc.generate_static_graph_image(current_db_path, result)
         if buf:
             st.download_button("📥 그래프 다운로드", buf, "graph.png", "image/png")

@@ -1,6 +1,5 @@
 import kuzu
 import os
-import shutil
 
 class KuzuManager:
     def __init__(self, db_path=None):
@@ -15,13 +14,18 @@ class KuzuManager:
         self._initialize_schema()
 
     def close(self):
-        """DB 리소스 명시적 해제 (Lock 방지)"""
+        """DB 리소스를 명시적으로 해제하여 Lock 방지"""
         try:
-            del self.conn
-            del self.db
-            print("💾 KuzuDB Connection Closed.")
+            if getattr(self, "conn", None) is not None and hasattr(self.conn, "close"):
+                self.conn.close()
+            if getattr(self, "db", None) is not None and hasattr(self.db, "close"):
+                self.db.close()
+
+            self.conn = None
+            self.db = None
+            print("💾 KuzuDB 리소스가 안전하게 해제되었습니다.")
         except Exception as e:
-            print(f"⚠️ DB 해제 중 오류: {e}")
+            print(f"⚠️ DB 해제 중 오류 발생: {e}")
 
     def _initialize_schema(self):
         """스키마 생성 및 상세 예외 처리"""
@@ -75,27 +79,28 @@ class KuzuManager:
             for task in analysis_result.get("tasks", []):
                 desc_text = task.get('description', task.get('desc', 'No Description'))
                 self.conn.execute(
-                    "MERGE (t:Task {description: $desc}) ON CREATE SET t.deadline = $due, t.status = 'To Do' ON MATCH SET t.deadline = $due",
-                    {"desc": desc_text, "due": task.get('deadline', 'TBD')}
+                    "MERGE (t:Task {description: $task_desc}) ON CREATE SET t.deadline = $due, t.status = 'To Do' ON MATCH SET t.deadline = $due",
+                    {"task_desc": desc_text, "due": task.get('deadline', 'TBD')}
                 )
                 if 'assignee' in task:
                     self.conn.execute(
-                        "MATCH (p:Person {name: $name}), (t:Task {description: $desc}) MERGE (p)-[:ASSIGNED_TO]->(t)",
-                        {"name": task['assignee'], "desc": desc_text}
+                        "MATCH (p:Person {name: $name}), (t:Task {description: $task_desc}) MERGE (p)-[:ASSIGNED_TO]->(t)",
+                        {"name": task['assignee'], "task_desc": desc_text}
                     )
 
             # 4. Decision 노드 및 관계 (Topic과 연결)
             for d in analysis_result.get("decisions", []):
                 desc_text = d.get('description', d.get('desc', 'No Description'))
-                self.conn.execute("MERGE (d:Decision {description: $desc})", {"desc": desc_text})
+                self.conn.execute("MERGE (d:Decision {description: $decision_desc})", {"decision_desc": desc_text})
                 
                 # Decision이 특정 Topic과 연관되어 있다면 연결 (LLM 추출 구조에 따라 조정 가능)
                 if 'related_topic' in d:
                     self.conn.execute(
-                        "MATCH (t:Topic {title: $title}), (d:Decision {description: $desc}) MERGE (t)-[:RESULTED_IN]->(d)",
-                        {"title": d['related_topic'], "desc": desc_text}
+                        "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) MERGE (t)-[:RESULTED_IN]->(d)",
+                        {"title": d['related_topic'], "decision_desc": desc_text}
                     )
 
             print(f"🎉 데이터 적재 완료! (Topics: {len(analysis_result.get('topics', []))}개)")
         except Exception as e:
             print(f"❌ 데이터 적재 중 오류 발생: {e}")
+            raise

@@ -17,6 +17,8 @@ def check_database():
 
     print(f"🔎 DB 찾는 중: {db_path}")
 
+    db = None
+    conn = None
     try:
         # 3. DB 연결
         db = kuzu.Database(db_path)
@@ -61,6 +63,14 @@ def check_database():
             
     except Exception as e:
         print(f"\n❌ [Error] : {e}")
+    finally:
+        try:
+            if conn is not None and hasattr(conn, "close"):
+                conn.close()
+            if db is not None and hasattr(db, "close"):
+                db.close()
+        except Exception:
+            pass
 
 if __name__ == "__main__":
     check_database()

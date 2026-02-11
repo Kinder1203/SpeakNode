@@ -23,7 +23,7 @@ class SpeakNodeEngine:
         self.db_path = os.path.join(project_root, "database", "speaknode.kuzu")
         print("✅ [System] 엔진 준비 완료!")
 
-    def process(self, audio_path: str):
+    def process(self, audio_path: str, db_path: str | None = None):
         print(f"▶️ [Pipeline] 분석 시작: {os.path.basename(audio_path)}")
         
         # 1. STT 변환
@@ -65,7 +65,8 @@ class SpeakNodeEngine:
         
         # 3. DB 적재
         print("   Processing Step 3: Knowledge Graph Ingestion...")
-        db = KuzuManager(db_path=self.db_path)
+        target_db_path = db_path if db_path else self.db_path
+        db = KuzuManager(db_path=target_db_path)
         try:
             db.ingest_data(analysis_data)
         finally:

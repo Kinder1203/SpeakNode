@@ -52,6 +52,8 @@ def display_analysis_cards(result):
 
 def render_graph_view(db_path):
     st.subheader("🕸️ Knowledge Graph Explorer")
+    db = None
+    conn = None
     try:
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
@@ -62,56 +64,75 @@ def render_graph_view(db_path):
             nodes_p = conn.execute("MATCH (p:Person) RETURN p.name, p.role")
             while nodes_p.has_next():
                 row = nodes_p.get_next()
-                net.add_node(row[0], label=f"{row[0]}\n({row[1]})", color="#2ecc71", title=row[1])
+                person_name = row[0]
+                person_role = row[1] if row[1] else "Member"
+                net.add_node(
+                    f"person::{person_name}",
+                    label=f"{person_name}\n({person_role})",
+                    color="#2ecc71",
+                    title=person_role,
+                )
         except: pass
         
         try:
             nodes_t = conn.execute("MATCH (t:Topic) RETURN t.title")
             while nodes_t.has_next():
                 row = nodes_t.get_next()
-                net.add_node(row[0], label=row[0], color="#9b59b6", shape="box")
+                title = row[0]
+                net.add_node(f"topic::{title}", label=title, color="#9b59b6", shape="box")
         except: pass
 
         nodes_d = conn.execute("MATCH (d:Decision) RETURN d.description")
         while nodes_d.has_next():
             row = nodes_d.get_next()
-            net.add_node(row[0], label=row[0], color="#f1c40f", shape="triangle")
+            desc = row[0]
+            net.add_node(f"decision::{desc}", label=desc, color="#f1c40f", shape="triangle")
 
         nodes_task = conn.execute("MATCH (t:Task) RETURN t.description")
         while nodes_task.has_next():
             row = nodes_task.get_next()
-            net.add_node(row[0], label=row[0], color="#3498db", shape="dot")
+            desc = row[0]
+            net.add_node(f"task::{desc}", label=desc, color="#3498db", shape="dot")
 
         # Edges
         edges_res = conn.execute("MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description")
         while edges_res.has_next():
             row = edges_res.get_next()
-            net.add_edge(row[0], row[1], label="RESULTED_IN")
+            net.add_edge(f"topic::{row[0]}", f"decision::{row[1]}", label="RESULTED_IN")
 
         edges_ass = conn.execute("MATCH (p:Person)-[:ASSIGNED_TO]->(t:Task) RETURN p.name, t.description")
         while edges_ass.has_next():
             row = edges_ass.get_next()
-            net.add_edge(row[0], row[1], label="ASSIGNED_TO")
+            net.add_edge(f"person::{row[0]}", f"task::{row[1]}", label="ASSIGNED_TO")
 
         edges_prop = conn.execute("MATCH (p:Person)-[:PROPOSED]->(t:Topic) RETURN p.name, t.title")
         while edges_prop.has_next():
             row = edges_prop.get_next()
-            net.add_edge(row[0], row[1], label="PROPOSED")
+            net.add_edge(f"person::{row[0]}", f"topic::{row[1]}", label="PROPOSED")
+
+        if not net.nodes:
+            st.info("그래프에 표시할 노드가 아직 없습니다.")
+            return
 
         net.toggle_physics(True)
-        path = "graph.html"
-        net.save_graph("graph.html")
-        with open(path, 'r', encoding='utf-8') as f:
-            components.html(f.read(), height=550)
+        # 파일 캐시/잔상 방지를 위해 메모리 HTML로 직접 렌더링
+        components.html(net.generate_html(notebook=False), height=550)
     except Exception as e:
         st.error(f"그래프 렌더링 오류: {e}")
     finally:
-        if conn: del conn
-        if db: del db
+        try:
+            if conn is not None and hasattr(conn, "close"):
+                conn.close()
+            if db is not None and hasattr(db, "close"):
+                db.close()
+        except Exception:
+            pass
 
 def generate_static_graph_image(db_path, analysis_json):
     """지식 그래프를 PNG 이미지로 저장 (Task 노드 누락 수정됨)"""
     set_korean_font()
+    db = None
+    conn = None
     try:
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
@@ -196,6 +217,14 @@ def generate_static_graph_image(db_path, analysis_json):
     except Exception as e:
         st.error(f"이미지 생성 실패: {e}")
         return None
+    finally:
+        try:
+            if conn is not None and hasattr(conn, "close"):
+                conn.close()
+            if db is not None and hasattr(db, "close"):
+                db.close()
+        except Exception:
+            pass
 
 def render_import_card_ui(share_manager):
     st.divider()
