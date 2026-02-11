@@ -3,10 +3,14 @@ import os
 import shutil
 
 class KuzuManager:
-    def __init__(self, db_path="./database/speaknode.kuzu"):
-        # DB 경로 자동 생성
+    def __init__(self, db_path=None):
+        if db_path is None:
+            # fallback (테스트용)
+            db_path = "./database/speaknode.kuzu"
+            
+        # 경로 생성
         if not os.path.exists(os.path.dirname(db_path)):
-            os.makedirs(os.path.dirname(db_path))
+            os.makedirs(os.path.dirname(db_path), exist_ok=True)
             
         self.db = kuzu.Database(db_path)
         self.conn = kuzu.Connection(self.db)

@@ -2,84 +2,101 @@ import streamlit as st
 import os
 import sys
 import shutil
+import time
 
-# 프로젝트 루트 경로 추가
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
 sys.path.append(project_root)
 
 import view_components as vc
-from core.pipeline import main as run_pipeline
+from core.pipeline import SpeakNodeEngine
 from core.share_manager import ShareManager
+from core.kuzu_manager import KuzuManager
 
-# --- 앱 설정 ---
 st.set_page_config(page_title="SpeakNode Dashboard", layout="wide")
 DB_PATH = os.path.join(project_root, "database", "speaknode.kuzu")
 share_mgr = ShareManager()
 
-# --- UI 렌더링 ---
+@st.cache_resource
+def get_engine():
+    return SpeakNodeEngine()
+
+if 'analysis_result' not in st.session_state:
+    st.session_state['analysis_result'] = None
+
+# --- 사이드바 및 DB 초기화 로직 (직접 구현) ---
 vc.render_header()
-uploaded_audio = vc.render_sidebar()
 
-# DB 초기화 로직
-if st.session_state.get('reset_db'):
-    if os.path.exists(DB_PATH):
-        shutil.rmtree(DB_PATH)
-    st.success("데이터베이스가 초기화되었습니다.")
-    st.session_state['reset_db'] = False
-    st.rerun()
+with st.sidebar:
+    st.header("📂 Workspace")
+    uploaded_audio = st.file_uploader("회의 녹음 파일", type=["mp3", "wav", "m4a"])
+    st.divider()
+    st.info(f"**Model:** DeepSeek-R1-14B")
+    
+    # [Fix] 초기화 버튼을 여기서 직접 처리
+    if st.button("🗑️ DB 초기화", type="secondary"):
+        try:
+            st.session_state['analysis_result'] = None
+            
+            if os.path.exists(DB_PATH):
+                # KuzuDB는 폴더로 생성됨. 파일 잠금 이슈 방지를 위해 약간의 대기 후 삭제
+                time.sleep(0.1) 
+                shutil.rmtree(DB_PATH, ignore_errors=True)
+                
+            st.success("DB가 초기화되었습니다.")
+            time.sleep(0.5)
+            st.rerun()
+        except Exception as e:
+            st.error(f"초기화 실패 (파일 사용 중): {e}")
 
-# --- 메인 시나리오 ---
+# --- 메인 로직 ---
 if uploaded_audio:
-    # 1. 오디오 미리듣기 (추가 제안 기능)
     st.audio(uploaded_audio)
     
     if st.button("🚀 회의 분석 시작", type="primary"):
-        # 임시 저장
-        temp_audio = os.path.join(project_root, f"temp_{uploaded_audio.name}")
+        safe_filename = os.path.basename(uploaded_audio.name)
+        temp_audio = os.path.join(project_root, f"temp_{safe_filename}")
+        
         with open(temp_audio, "wb") as f:
             f.write(uploaded_audio.getbuffer())
         
-        # 분석 진행 (Status UI 활용)
-        with st.status("🔍 SpeakNode가 분석을 수행 중입니다...", expanded=True) as status:
-            st.write("🎧 STT: 음성을 텍스트로 변환 중...")
-            # pipeline 실행
-            result = run_pipeline(temp_audio)
-            
-            st.write("🧠 LLM: 주요 정보를 구조화하고 요약 중...")
-            st.write("💾 DB: 지식 그래프에 노드 및 엣지 생성 중...")
-            status.update(label="✅ 분석이 완료되었습니다!", state="complete", expanded=False)
+        with st.status("🔍 분석 중...", expanded=True) as status:
+            engine = get_engine()
+            try:
+                # [Fix] engine.process는 이제 내부에서 절대경로 DB_PATH를 사용함
+                result = engine.process(temp_audio)
+                st.session_state['analysis_result'] = result
+                
+                if result:
+                    status.update(label="✅ 완료!", state="complete")
+                else:
+                    status.update(label="⚠️ 내용 없음", state="error")
+            except Exception as e:
+                st.error(f"에러: {e}")
+                status.update(label="❌ 실패", state="error")
         
-        # 2. 결과 출력 영역
+        if os.path.exists(temp_audio):
+            os.remove(temp_audio)
+
+    if st.session_state['analysis_result']:
+        result = st.session_state['analysis_result']
         st.divider()
         vc.display_analysis_cards(result)
         
-        # 3. 그래프 및 카드 영역 분할
-        col_left, col_right = st.columns([2, 1])
-        
-        with col_left:
-            vc.render_graph_view(DB_PATH)
-            
-        with col_right:
-            st.subheader("🖼️ 요약 카드 발급")
-            card_path = os.path.join(project_root, "shared_cards", "latest_summary.png")
-            if os.path.exists(card_path):
-                st.image(card_path, use_container_width=True)
-                with open(card_path, "rb") as f:
-                    st.download_button(
-                        label="📥 요약 이미지 다운로드",
-                        data=f,
-                        file_name=f"SpeakNode_{uploaded_audio.name}.png",
-                        mime="image/png"
-                    )
-        
-        # 임시 오디오 삭제
-        if os.path.exists(temp_audio):
-            os.remove(temp_audio)
-else:
-    # 업로드 전 기본 화면: 가이드 혹은 데이터 불러오기
-    st.info("왼쪽 사이드바에서 회의 녹음 파일을 업로드하여 분석을 시작하세요.")
-    vc.render_import_card_ui(share_mgr)
+        c1, c2 = st.columns([2, 1])
+        with c1: vc.render_graph_view(DB_PATH)
+        with c2:
+            st.subheader("💾 저장")
+            buf = vc.generate_static_graph_image(DB_PATH, result)
+            if buf:
+                st.download_button("📥 그래프 다운로드", buf, "graph.png", "image/png")
 
-# --- 푸터 ---
-st.caption("SpeakNode v1.0 (Prototype) | Kotlin Body x Python Brain Architecture")
+else:
+    st.info("파일을 업로드하세요.")
+    restored = vc.render_import_card_ui(share_mgr)
+    if restored:
+        if st.button("🔄 복원하기"):
+            db = KuzuManager(DB_PATH) # [Fix] 절대경로 주입
+            db.ingest_data(restored)
+            st.session_state['analysis_result'] = restored
+            st.rerun()

@@ -4,124 +4,213 @@ import pandas as pd
 from pyvis.network import Network
 import streamlit.components.v1 as components
 import kuzu
+import networkx as nx
+import matplotlib.pyplot as plt
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
+import io
+import json
+
+# --- 폰트 설정 (리눅스/윈도우 호환) ---
+def set_korean_font():
+    """OS에 따른 한글 폰트 설정"""
+    try:
+        if os.name == 'posix':  # Linux
+            plt.rcParams['font.family'] = 'NanumGothic' 
+        else:  # Windows
+            plt.rcParams['font.family'] = 'Malgun Gothic'
+        plt.rcParams['axes.unicode_minus'] = False
+    except Exception:
+        pass
+
+# ... (render_header, render_sidebar, display_analysis_cards, render_graph_view는 기존과 동일하게 유지) ...
+# (코드 길이상 생략했지만, 기존에 작성해주신 render_graph_view를 그대로 쓰시면 됩니다)
 
 def render_header():
-    """상단 헤더 및 프로젝트 소개"""
     st.title("🧠 SpeakNode: Intelligent Meeting Analyst")
-    st.markdown("""
-    **Local AI 기반 회의록 지식화 시스템** STT(Whisper) + LLM(DeepSeek) + GraphDB(KuzuDB)를 활용하여 회의 내용을 구조화합니다.
-    """)
+    st.markdown("**Local AI 기반 회의록 지식화 시스템**")
     st.divider()
 
 def render_sidebar():
-    """사이드바 설정 및 파일 업로드"""
     with st.sidebar:
         st.header("📂 Workspace")
-        uploaded_file = st.file_uploader("회의 녹음 파일 (MP3, WAV)", type=["mp3", "wav", "m4a"])
-        
-        st.divider()
-        st.subheader("⚙️ System Settings")
-        st.info(f"**Model:** DeepSeek-R1-14B\n\n**STT:** Faster-Whisper-V3")
-        
-        if st.button("🗑️ DB 초기화", help="모든 회의 데이터를 삭제합니다."):
-            st.session_state['reset_db'] = True
-            
-        return uploaded_file
+        return st.file_uploader("회의 녹음 파일 (MP3, WAV)", type=["mp3", "wav", "m4a"])
 
 def display_analysis_cards(result):
-    """분석 결과(주제, 결정사항, 할 일)를 카드 형태로 출력"""
-    if not result:
-        return
-
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.subheader("📌 주요 주제")
+    if not result: return
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.subheader("📌 주제")
         for t in result.get('topics', []):
-            with st.expander(f"📍 {t['title']}"):
-                st.write(t.get('summary', '내용 없음'))
-
-    with col2:
-        st.subheader("✅ 결정 사항")
-        for d in result.get('decisions', []):
-            st.success(d.get('description', d.get('desc', '')))
-
-    with col3:
-        st.subheader("📋 할 일 (Tasks)")
-        tasks = result.get('tasks', [])
-        if tasks:
-            df = pd.DataFrame(tasks)
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.write("추출된 할 일이 없습니다.")
+            with st.expander(t['title']): st.write(t.get('summary', ''))
+    with c2:
+        st.subheader("✅ 결정")
+        for d in result.get('decisions', []): st.success(d.get('description', ''))
+    with c3:
+        st.subheader("📋 할 일")
+        if result.get('tasks'): st.dataframe(result['tasks'])
 
 def render_graph_view(db_path):
-    """KuzuDB 데이터를 시각적 네트워크 그래프로 렌더링"""
     st.subheader("🕸️ Knowledge Graph Explorer")
-    
+    try:
+        db = kuzu.Database(db_path)
+        conn = kuzu.Connection(db)
+        net = Network(height="500px", width="100%", bgcolor="#ffffff", font_color="#333333")
+        
+        # Nodes
+        try:
+            nodes_p = conn.execute("MATCH (p:Person) RETURN p.name, p.role")
+            while nodes_p.has_next():
+                row = nodes_p.get_next()
+                net.add_node(row[0], label=f"{row[0]}\n({row[1]})", color="#2ecc71", title=row[1])
+        except: pass
+        
+        try:
+            nodes_t = conn.execute("MATCH (t:Topic) RETURN t.title")
+            while nodes_t.has_next():
+                row = nodes_t.get_next()
+                net.add_node(row[0], label=row[0], color="#9b59b6", shape="box")
+        except: pass
+
+        nodes_d = conn.execute("MATCH (d:Decision) RETURN d.description")
+        while nodes_d.has_next():
+            row = nodes_d.get_next()
+            net.add_node(row[0], label=row[0], color="#f1c40f", shape="triangle")
+
+        nodes_task = conn.execute("MATCH (t:Task) RETURN t.description")
+        while nodes_task.has_next():
+            row = nodes_task.get_next()
+            net.add_node(row[0], label=row[0], color="#3498db", shape="dot")
+
+        # Edges
+        edges_res = conn.execute("MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description")
+        while edges_res.has_next():
+            row = edges_res.get_next()
+            net.add_edge(row[0], row[1], label="RESULTED_IN")
+
+        edges_ass = conn.execute("MATCH (p:Person)-[:ASSIGNED_TO]->(t:Task) RETURN p.name, t.description")
+        while edges_ass.has_next():
+            row = edges_ass.get_next()
+            net.add_edge(row[0], row[1], label="ASSIGNED_TO")
+
+        edges_prop = conn.execute("MATCH (p:Person)-[:PROPOSED]->(t:Topic) RETURN p.name, t.title")
+        while edges_prop.has_next():
+            row = edges_prop.get_next()
+            net.add_edge(row[0], row[1], label="PROPOSED")
+
+        net.toggle_physics(True)
+        path = "graph.html"
+        net.save_graph(path)
+        with open(path, 'r', encoding='utf-8') as f:
+            components.html(f.read(), height=550)
+    except Exception as e:
+        st.error(f"그래프 렌더링 오류: {e}")
+
+def generate_static_graph_image(db_path, analysis_json):
+    """지식 그래프를 PNG 이미지로 저장 (Task 노드 누락 수정됨)"""
+    set_korean_font()
     try:
         db = kuzu.Database(db_path)
         conn = kuzu.Connection(db)
         
-        # 그래프 설정 (흰색 배경, 진한 글씨)
-        net = Network(height="500px", width="100%", bgcolor="#ffffff", font_color="#333333")
+        G = nx.DiGraph()
+        labels = {}
+
+        # 1. Person 노드
+        nodes_p = conn.execute("MATCH (p:Person) RETURN p.name")
+        while nodes_p.has_next():
+            row = nodes_p.get_next()
+            G.add_node(row[0], color="#2ecc71")
+            labels[row[0]] = row[0]
         
-        # 1. Decision 노드 추가 (노란색)
-        nodes_d_result = conn.execute("MATCH (d:Decision) RETURN d.description")
-        while nodes_d_result.has_next():
-            row = nodes_p_result.get_next()
-            net.add_node(row[0], label=row[0], color="#f1c40f", shape="triangle", title="Decision")
+        # 2. Topic 노드
+        nodes_t = conn.execute("MATCH (t:Topic) RETURN t.title")
+        while nodes_t.has_next():
+            row = nodes_t.get_next()
+            G.add_node(row[0], color="#9b59b6")
+            labels[row[0]] = row[0]
 
-        # 2. Task 노드 추가 (파란색)
-        nodes_task_result = conn.execute("MATCH (t:Task) RETURN t.description")
-        while nodes_task_result.has_next():
-            row = nodes_task_result.get_next()
-            net.add_node(row[0], label=row[0], color="#3498db", shape="dot", title="Task")
+        # 3. Decision 노드
+        nodes_d = conn.execute("MATCH (d:Decision) RETURN d.description")
+        while nodes_d.has_next():
+            row = nodes_d.get_next()
+            label = (row[0][:10] + '..') if len(row[0]) > 10 else row[0]
+            G.add_node(row[0], color="#f1c40f")
+            labels[row[0]] = label
 
-        # 3. 관계 추가 (Topic -> Decision, Person -> Task 등)
-        # RESULTED_IN 관계 (Topic -> Decision)
-        edges_res_result = conn.execute("MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description")
-        while edges_res_result.has_next():
-            row = edges_res_result.get_next()
-            net.add_edge(row[0], row[1], label="RESULTED_IN", color="#bdc3c7")
+        # [Fix] 4. Task 노드 (누락되었던 부분 확인 및 보강)
+        nodes_task = conn.execute("MATCH (t:Task) RETURN t.description")
+        while nodes_task.has_next():
+            row = nodes_task.get_next()
+            label = (row[0][:10] + '..') if len(row[0]) > 10 else row[0]
+            G.add_node(row[0], color="#3498db")
+            labels[row[0]] = label
 
-        # ASSIGNED_TO 관계 (Person -> Task)
-        edges_ass_result = conn.execute("MATCH (p:Person)-[:ASSIGNED_TO]->(t:Task) RETURN p.name, t.description")
-        while edges_ass_result.has_next():
-            row = edges_ass_result.get_next()
-            net.add_edge(row[0], row[1], label="ASSIGNED_TO", color="#bdc3c7")
+        # 5. 엣지 연결 (노드가 존재할 때만 추가)
+        # Topic -> Decision
+        edges_res = conn.execute("MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description")
+        while edges_res.has_next():
+            row = edges_res.get_next()
+            if G.has_node(row[0]) and G.has_node(row[1]): G.add_edge(row[0], row[1])
 
-        # 물리 엔진 설정 및 HTML 생성
-        net.toggle_physics(True)
-        path = "graph.html"
-        net.save_graph(path)
-        
-        # Streamlit에 그래프 삽입
-        with open(path, 'r', encoding='utf-8') as f:
-            components.html(f.read(), height=550)
+        # Person -> Task
+        edges_ass = conn.execute("MATCH (p:Person)-[:ASSIGNED_TO]->(t:Task) RETURN p.name, t.description")
+        while edges_ass.has_next():
+            row = edges_ass.get_next()
+            if G.has_node(row[0]) and G.has_node(row[1]): G.add_edge(row[0], row[1])
             
+        # Person -> Topic
+        edges_prop = conn.execute("MATCH (p:Person)-[:PROPOSED]->(t:Topic) RETURN p.name, t.title")
+        while edges_prop.has_next():
+            row = edges_prop.get_next()
+            if G.has_node(row[0]) and G.has_node(row[1]): G.add_edge(row[0], row[1])
+
+        # 그래프 그리기
+        plt.figure(figsize=(10, 6))
+        pos = nx.spring_layout(G, k=0.8)
+        node_colors = [nx.get_node_attributes(G, 'color').get(n, '#bdc3c7') for n in G.nodes()]
+        
+        nx.draw(G, pos, with_labels=True, labels=labels, node_color=node_colors, 
+                node_size=1500, font_size=10, font_weight="bold", 
+                edge_color="gray", alpha=0.9, 
+                font_family=plt.rcParams['font.family'][0])
+        
+        buf = io.BytesIO()
+        plt.savefig(buf, format="png", bbox_inches='tight')
+        plt.close()
+        buf.seek(0)
+        
+        # 스테가노그래피
+        image = Image.open(buf)
+        metadata = PngInfo()
+        metadata.add_text("speaknode_data", json.dumps(analysis_json, ensure_ascii=False))
+        
+        final_buf = io.BytesIO()
+        image.save(final_buf, "PNG", pnginfo=metadata)
+        final_buf.seek(0)
+        return final_buf
+
     except Exception as e:
-        # 데이터가 아예 없거나 테이블이 생성되지 않았을 때 표시
-        st.warning(f"그래프를 구성할 데이터가 부족하거나 오류가 발생했습니다: {e}")
+        st.error(f"이미지 생성 실패: {e}")
+        return None
 
 def render_import_card_ui(share_manager):
-    """공유 카드로부터 데이터 복원하는 UI"""
     st.divider()
-    st.subheader("📥 공유 카드로 데이터 불러오기")
-    import_file = st.file_uploader("SpeakNode 요약 카드(PNG)를 업로드하세요", type=["png"], key="import_card")
+    st.subheader("📥 지식 그래프 불러오기 (DB 복원)")
+    import_file = st.file_uploader("SpeakNode 그래프 이미지(PNG)를 업로드하세요", type=["png"], key="import_card")
     
     if import_file:
-        # 임시 저장 후 데이터 추출
         temp_path = f"temp_import_{import_file.name}"
         with open(temp_path, "wb") as f:
             f.write(import_file.getbuffer())
         
         data = share_manager.load_data_from_image(temp_path)
+        if os.path.exists(temp_path): os.remove(temp_path)
+            
         if data:
-            st.success("✅ 카드에서 회의 데이터를 성공적으로 추출했습니다!")
-            st.json(data)
+            st.success("✅ 이미지에서 데이터를 찾았습니다!")
+            return data
         else:
-            st.error("❌ 이 이미지에는 SpeakNode 메타데이터가 포함되어 있지 않습니다.")
-        
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
+            st.error("❌ 데이터가 없는 이미지입니다.")
+            return None
+    return None

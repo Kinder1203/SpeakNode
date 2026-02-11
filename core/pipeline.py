@@ -1,59 +1,63 @@
 import os
-import json
+import sys
 
-try:
-    # 1. Streamlit(외부)에서 실행될 때: "내 옆(.)에 있는 파일"이라고 명시
-    from .transcriber import Transcriber
-    from .extractor import Extractor
-    from .kuzu_manager import KuzuManager
-    from .share_manager import ShareManager
-except ImportError:
-    # 2. pipeline.py 직접 실행할 때: "그냥 이름"으로 찾음
-    from transcriber import Transcriber
-    from extractor import Extractor
-    from kuzu_manager import KuzuManager
-    from share_manager import ShareManager
+# 프로젝트 루트 경로 설정
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.abspath(os.path.join(current_dir, "../"))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
-def main(audio_path):
-    print(f"🚀 [SpeakNode] 파이프라인 시작: {audio_path}")
-    
-    # 1. 초기화
-    transcriber = Transcriber()
-    extractor = Extractor()
-    db_manager = KuzuManager()
+from core.transcriber import Transcriber
+from core.extractor import Extractor
+from core.kuzu_manager import KuzuManager
 
-    # 2. STT (듣기)
-    print("👂 음성 인식 중...")
-    transcript_list = transcriber.transcribe(audio_path)
-    # transcript_list는 [{"start":..., "text":...}, ...] 형태의 리스트임
+class SpeakNodeEngine:
+    """
+    SpeakNode AI 엔진 (Singleton 패턴)
+    """
+    def __init__(self):
+        print("🚀 [System] 엔진 초기화 중... (모델 로딩)")
+        self.transcriber = Transcriber(model_size="large-v3") 
+        self.extractor = Extractor(model_name="deepseek-r1:14b")
+        # DB 경로를 절대 경로로 미리 계산
+        self.db_path = os.path.join(project_root, "database", "speaknode.kuzu")
+        print("✅ [System] 엔진 준비 완료!")
 
-    if not transcript_list:
-        print("❌ 음성 인식 결과가 없습니다.")
-        return
+    def process(self, audio_path: str):
+        print(f"▶️ [Pipeline] 분석 시작: {os.path.basename(audio_path)}")
+        
+        # 1. STT 변환
+        print("   Processing Step 1: STT...")
+        # [Fix] transcribe 반환값(list) 처리
+        # Faster-Whisper는 (segments, info) 혹은 list[Segment]를 반환함.
+        # 구현에 따라 다르지만, 리스트인 경우 텍스트를 join해야 함.
+        segments_or_text = self.transcriber.transcribe(audio_path)
+        
+        if isinstance(segments_or_text, list):
+            # 세그먼트 리스트인 경우 텍스트 추출 및 결합
+            transcript_text = " ".join([seg.text for seg in segments_or_text])
+        elif isinstance(segments_or_text, dict) and 'text' in segments_or_text:
+            transcript_text = segments_or_text['text']
+        else:
+            transcript_text = str(segments_or_text)
+        
+        if not transcript_text.strip():
+            print("⚠️ [Warning] 추출된 텍스트가 없습니다.")
+            return None
 
-    # [수정] 리스트에 있는 모든 문장을 하나로 합침
-    full_text = " ".join([seg['text'] for seg in transcript_list])
-    print(f"📝 추출된 텍스트 길이: {len(full_text)}자")
-    
-    # 3. LLM Extraction (생각하기)
-    print("🧠 회의 내용 분석 중...")
-    analysis_result = extractor.extract(full_text) # 합친 텍스트를 전달
-    
-    # 4. DB Ingestion (기억하기)
-    print("💾 그래프 DB에 저장 중...")
-    db_manager.ingest_data(analysis_result)
-
-    #5. 공유용 이미지 생성 (Phase 4)
-    print("🖼️ 공유용 이미지 카드 생성 중...")
-    share_manager = ShareManager()
-    share_manager.create_card(analysis_result, filename="latest_summary.png")
-    
-    print("✅ 모든 작업 완료!")
-    return analysis_result
+        # 2. LLM 정보 추출
+        print("   Processing Step 2: LLM Extraction...")
+        # [Fix] 메서드명 불일치 수정 (extract_info -> extract)
+        analysis_data = self.extractor.extract(transcript_text)
+        
+        # 3. DB 적재
+        print("   Processing Step 3: Knowledge Graph Ingestion...")
+        # [Fix] 절대 경로 주입 (실행 위치 의존성 제거)
+        db = KuzuManager(db_path=self.db_path)
+        db.ingest_data(analysis_data)
+        
+        print("✅ [Pipeline] 분석 및 저장 완료")
+        return analysis_data
 
 if __name__ == "__main__":
-    target_file = "../test_audio.mp3" 
-    if os.path.exists(target_file):
-        main(target_file)
-    else:
-        print(f"파일을 찾을 수 없습니다: {target_file}")
+    engine = SpeakNodeEngine()
