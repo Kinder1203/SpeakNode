@@ -22,16 +22,28 @@ class ShareManager:
 
         # 2. 텍스트 그리기 (간단한 시각화)
         try:
-            # [수정] 리눅스에 설치된 나눔고딕 폰트 경로 지정
-            font_path = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+            font_path = None
+            if os.name == 'posix':  # Linux (RunPod 등)
+                # 우선순위: 나눔고딕 -> 없으면 시스템 기본 산세리프 등 탐색
+                candidates = [
+                    "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" 
+                ]
+                for path in candidates:
+                    if os.path.exists(path):
+                        font_path = path
+                        break
+            elif os.name == 'nt':  # Windows
+                font_path = "C:/Windows/Fonts/malgun.ttf" # 맑은 고딕
             
-            # 제목용 큰 폰트 (크기 40)
-            font_title = ImageFont.truetype(font_path, 40)
-            # 본문용 작은 폰트 (크기 20)
-            font_text = ImageFont.truetype(font_path, 20)
+            if font_path:
+                font_title = ImageFont.truetype(font_path, 40)
+                font_text = ImageFont.truetype(font_path, 20)
+            else:
+                raise FileNotFoundError("Fonts not found")
+                
         except Exception as e:
-            # 폰트 못 찾으면 기본 폰트 사용 (한글 깨짐)
-            print(f"⚠️ 폰트 로드 실패: {e}")
+            print(f"⚠️ 폰트 로드 실패({e}). 기본 폰트를 사용합니다 (한글 깨짐 가능성 있음).")
             font_title = ImageFont.load_default()
             font_text = ImageFont.load_default()
 
