@@ -76,11 +76,12 @@ class KuzuManager:
                 
                 self.conn.execute(
                     """
-                    MERGE (t:Task {description: $desc})
+                    MERGE (t:Task {description: $task_desc})
                     ON CREATE SET t.deadline = $due, t.status = 'To Do'
                     ON MATCH SET t.deadline = $due
                     """,
-                    {"desc": desc_text, "due": task.get('deadline', 'TBD')}
+                    # 파라미터 키를 'desc' -> 'task_desc'로 변경
+                    {"task_desc": desc_text, "due": task.get('deadline', 'TBD')}
                 )
                 if 'assignee' in task:
                     self.conn.execute(

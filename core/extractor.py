@@ -24,19 +24,19 @@ class Extractor:
         # 2. 프롬프트 설계 (그래프 DB 스키마에 맞춰 추출 지시)
         self.prompt = ChatPromptTemplate.from_messages([
             ("system", """
-            당신은 회의록 분석 전문가입니다. 주어진 회의 텍스트를 분석하여 아래 JSON 형식으로 정보를 추출하세요.
-            응답은 반드시 유효한 JSON 포맷이어야 하며, 다른 설명은 포함하지 마세요.
+            당신은 회의록 분석 전문가입니다. 회의 내용을 분석하여 아래 JSON 형식으로 정보를 추출하세요.
             
-            [추출 항목]
-            1. topics: 주요 논의 주제 (title, summary)
-            2. decisions: 결정된 사항 (description)
-            3. tasks: 할당된 업무 (description, assignee, deadline)
+            [추출 지침]
+            1. people: 회의에 참여한 모든 인물과 그들의 역할을 추출하세요.
+            2. topics: 논의된 주제를 추출하되, 해당 주제를 누가 처음 꺼냈는지(proposer) 반드시 포함하세요.
+            3. decisions/tasks: 결정사항과 할 일을 추출하고, 담당자(assignee)를 연결하세요.
             
-            [JSON 형식 예시]
+            [JSON 형식]
             {{
-                "topics": [{{"title": "서버 비용 절감", "summary": "AWS 비용이 과다하여 최적화 필요"}}],
-                "decisions": [{{"description": "스팟 인스턴스 도입 확정"}}],
-                "tasks": [{{"description": "비용 보고서 작성", "assignee": "김철수", "deadline": "2024-02-20"}}]
+                "people": [{{"name": "이름", "role": "직책"}}],
+                "topics": [{{"title": "주제명", "summary": "요약", "proposer": "이름"}}],
+                "decisions": [{{"description": "결정사항", "proposer": "이름"}}],
+                "tasks": [{{"description": "할 일", "assignee": "이름", "deadline": "날짜"}}]
             }}
             """),
             ("user", "{text}")
