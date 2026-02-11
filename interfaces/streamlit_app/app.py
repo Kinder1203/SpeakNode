@@ -5,24 +5,42 @@ import shutil
 import time
 import re
 
+# [Fix 1] set_page_config를 최상단으로 이동 (가장 중요)
+st.set_page_config(page_title="SpeakNode Dashboard", layout="wide")
+
+# [Fix 3] Matplotlib 백엔드 설정 (서버 환경 프리징 방지)
+import matplotlib
+matplotlib.use('Agg') # 화면 출력 없는 모드로 강제 설정
+
+# 프로젝트 루트 경로 설정
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.abspath(os.path.join(current_dir, "../../"))
-sys.path.append(project_root)
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
+# [Debug] 로딩 상태 확인용 로그
+print("🚀 [App] Importing modules...")
 
 import view_components as vc
 from core.pipeline import SpeakNodeEngine
 from core.share_manager import ShareManager
 from core.kuzu_manager import KuzuManager
 
+print("✅ [App] Modules imported successfully.")
+
 # --- 앱 기본 설정 ---
-st.set_page_config(page_title="SpeakNode Dashboard", layout="wide")
 CHAT_DB_DIR = os.path.join(project_root, "database", "chats")
 os.makedirs(CHAT_DB_DIR, exist_ok=True)
-share_mgr = ShareManager()
+
+# ShareManager 초기화 (경로 보정)
+# [Fix] 상대 경로 문제 방지를 위해 절대 경로 사용
+SHARED_CARDS_DIR = os.path.join(project_root, "shared_cards")
+share_mgr = ShareManager(output_dir=SHARED_CARDS_DIR)
 
 # --- 엔진 캐싱 ---
 @st.cache_resource
 def get_engine():
+    print("🏗️ [App] Initializing SpeakNodeEngine...")
     return SpeakNodeEngine()
 
 # --- 세션 상태 초기화 ---
@@ -39,9 +57,10 @@ def sanitize_chat_id(raw: str) -> str:
 
 def list_chat_ids() -> list[str]:
     chat_ids = []
-    for name in os.listdir(CHAT_DB_DIR):
-        if name.endswith(".kuzu"):
-            chat_ids.append(name[:-5])
+    if os.path.exists(CHAT_DB_DIR):
+        for name in os.listdir(CHAT_DB_DIR):
+            if name.endswith(".kuzu"):
+                chat_ids.append(name[:-5])
     return sorted(chat_ids)
 
 
@@ -117,8 +136,9 @@ if uploaded_audio:
             f.write(uploaded_audio.getbuffer())
         
         with st.status("🔍 분석 중...", expanded=True) as status:
-            engine = get_engine()
             try:
+                # [Fix] 엔진 로딩을 try 블록 안에서 수행하여 에러 캐치
+                engine = get_engine()
                 result = engine.process(temp_audio, db_path=current_db_path)
                 st.session_state['analysis_result'] = result
                 
@@ -128,11 +148,14 @@ if uploaded_audio:
                     status.update(label="⚠️ 내용 없음", state="error")
                     st.warning("분석 결과가 없습니다.")
             except Exception as e:
-                st.error(f"에러: {e}")
+                st.error(f"에러 발생: {e}")
+                print(f"❌ Error detail: {e}")
                 status.update(label="❌ 실패", state="error")
         
         if os.path.exists(temp_audio):
-            os.remove(temp_audio)
+            try:
+                os.remove(temp_audio)
+            except: pass
 
 # --- [메인 로직] 2. 복원 (오디오 없을 때 PNG 업로드) ---
 elif not st.session_state['analysis_result']: 
