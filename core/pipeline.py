@@ -18,7 +18,7 @@ class SpeakNodeEngine:
     def __init__(self):
         print("🚀 [System] 엔진 초기화 중... (모델 로딩)")
         self.transcriber = Transcriber(model_size="large-v3") 
-        self.extractor = Extractor(model_name="deepseek-r1:14b")
+        self.extractor = Extractor(model_name="qwen2.5:14b")
         # DB 경로를 절대 경로로 미리 계산
         self.db_path = os.path.join(project_root, "database", "speaknode.kuzu")
         print("✅ [System] 엔진 준비 완료!")

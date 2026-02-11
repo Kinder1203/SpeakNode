@@ -12,5 +12,5 @@ database/
 *.m4a
 temp_uploads/
 .DS_Store
-shared_cards/
+.shared_cards/
 *.png
