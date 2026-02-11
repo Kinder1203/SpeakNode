@@ -24,7 +24,7 @@ def get_engine():
 if 'analysis_result' not in st.session_state:
     st.session_state['analysis_result'] = None
 
-# --- 사이드바 및 DB 초기화 로직 (직접 구현) ---
+# --- UI 렌더링 ---
 vc.render_header()
 
 with st.sidebar:
@@ -33,23 +33,29 @@ with st.sidebar:
     st.divider()
     st.info(f"**Model:** DeepSeek-R1-14B")
     
-    # [Fix] 초기화 버튼을 여기서 직접 처리
+    # [Fix: High] DB 초기화 로직 강화 (파일/폴더 구분 삭제)
     if st.button("🗑️ DB 초기화", type="secondary"):
         try:
             st.session_state['analysis_result'] = None
             
             if os.path.exists(DB_PATH):
-                # KuzuDB는 폴더로 생성됨. 파일 잠금 이슈 방지를 위해 약간의 대기 후 삭제
-                time.sleep(0.1) 
-                shutil.rmtree(DB_PATH, ignore_errors=True)
+                # 잠금 해제를 위해 잠시 대기
+                time.sleep(0.1)
+                
+                if os.path.isfile(DB_PATH):
+                    os.remove(DB_PATH) # 파일이면 remove
+                else:
+                    shutil.rmtree(DB_PATH) # 폴더면 rmtree (ignore_errors 제거하여 에러 확인)
                 
             st.success("DB가 초기화되었습니다.")
             time.sleep(0.5)
             st.rerun()
         except Exception as e:
-            st.error(f"초기화 실패 (파일 사용 중): {e}")
+            st.error(f"초기화 실패: {e}")
+            # 실패 시 로그 출력
+            print(f"❌ DB Deletion Failed: {e}")
 
-# --- 메인 로직 ---
+# --- 메인 시나리오 ---
 if uploaded_audio:
     st.audio(uploaded_audio)
     
@@ -63,7 +69,7 @@ if uploaded_audio:
         with st.status("🔍 분석 중...", expanded=True) as status:
             engine = get_engine()
             try:
-                # [Fix] engine.process는 이제 내부에서 절대경로 DB_PATH를 사용함
+                # Engine Process 호출
                 result = engine.process(temp_audio)
                 st.session_state['analysis_result'] = result
                 
@@ -71,6 +77,7 @@ if uploaded_audio:
                     status.update(label="✅ 완료!", state="complete")
                 else:
                     status.update(label="⚠️ 내용 없음", state="error")
+                    st.warning("분석 결과가 없습니다. (녹음 상태를 확인해주세요)")
             except Exception as e:
                 st.error(f"에러: {e}")
                 status.update(label="❌ 실패", state="error")
@@ -78,6 +85,7 @@ if uploaded_audio:
         if os.path.exists(temp_audio):
             os.remove(temp_audio)
 
+    # 결과 표시
     if st.session_state['analysis_result']:
         result = st.session_state['analysis_result']
         st.divider()
@@ -96,7 +104,7 @@ else:
     restored = vc.render_import_card_ui(share_mgr)
     if restored:
         if st.button("🔄 복원하기"):
-            db = KuzuManager(DB_PATH) # [Fix] 절대경로 주입
+            db = KuzuManager(DB_PATH)
             db.ingest_data(restored)
             st.session_state['analysis_result'] = restored
             st.rerun()

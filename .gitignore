@@ -1,23 +1,16 @@
-# 가상환경 (제일 중요!)
 venv/
 env/
 .venv/
 .env
-
-# 파이썬 찌꺼기
 __pycache__/
 *.pyc
-
-# 데이터베이스 & 로그
 database/
 *.kuzu
 *.log
-
-# 오디오 파일 (용량 큼)
 *.mp3
 *.wav
 *.m4a
-
-# 임시 파일
 temp_uploads/
 .DS_Store
+shared_cards/
+*.png

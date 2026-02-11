@@ -28,31 +28,43 @@ class SpeakNodeEngine:
         
         # 1. STT 변환
         print("   Processing Step 1: STT...")
-        # [Fix] transcribe 반환값(list) 처리
-        # Faster-Whisper는 (segments, info) 혹은 list[Segment]를 반환함.
-        # 구현에 따라 다르지만, 리스트인 경우 텍스트를 join해야 함.
-        segments_or_text = self.transcriber.transcribe(audio_path)
+        stt_result = self.transcriber.transcribe(audio_path)
         
-        if isinstance(segments_or_text, list):
-            # 세그먼트 리스트인 경우 텍스트 추출 및 결합
-            transcript_text = " ".join([seg.text for seg in segments_or_text])
-        elif isinstance(segments_or_text, dict) and 'text' in segments_or_text:
-            transcript_text = segments_or_text['text']
+        # [Check 1] STT 결과가 None인 경우 즉시 중단
+        if stt_result is None:
+            print("❌ [Pipeline] STT 반환값이 없습니다 (None). 분석을 중단합니다.")
+            return None
+
+        transcript_text = ""
+        
+        # [Fix: Critical] 리스트 처리 로직 보강 (빈 리스트 '[]' 문자열화 방지)
+        if isinstance(stt_result, list):
+            if not stt_result: # 빈 리스트인 경우
+                transcript_text = "" # 명시적으로 빈 문자열 할당
+            elif isinstance(stt_result[0], dict):
+                transcript_text = " ".join([seg.get('text', '') for seg in stt_result])
+            elif hasattr(stt_result[0], 'text'):
+                transcript_text = " ".join([seg.text for seg in stt_result])
+            else:
+                transcript_text = str(stt_result)
+                
+        elif isinstance(stt_result, dict):
+            transcript_text = stt_result.get('text', "")
         else:
-            transcript_text = str(segments_or_text)
+            transcript_text = str(stt_result)
         
-        if not transcript_text.strip():
-            print("⚠️ [Warning] 추출된 텍스트가 없습니다.")
+        # [Check 2] 텍스트 유효성 재확인 (빈 문자열, "None", "[]" 등 방어)
+        cleaned_text = transcript_text.strip()
+        if not cleaned_text or cleaned_text.lower() == "none" or cleaned_text == "[]":
+            print(f"⚠️ [Warning] 유효한 텍스트가 없습니다. (Raw: {transcript_text})")
             return None
 
         # 2. LLM 정보 추출
         print("   Processing Step 2: LLM Extraction...")
-        # [Fix] 메서드명 불일치 수정 (extract_info -> extract)
         analysis_data = self.extractor.extract(transcript_text)
         
         # 3. DB 적재
         print("   Processing Step 3: Knowledge Graph Ingestion...")
-        # [Fix] 절대 경로 주입 (실행 위치 의존성 제거)
         db = KuzuManager(db_path=self.db_path)
         db.ingest_data(analysis_data)
         
