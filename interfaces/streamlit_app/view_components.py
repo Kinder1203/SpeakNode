@@ -82,17 +82,21 @@ def render_graph_view(db_path):
                 net.add_node(f"topic::{title}", label=title, color="#9b59b6", shape="box")
         except: pass
 
-        nodes_d = conn.execute("MATCH (d:Decision) RETURN d.description")
-        while nodes_d.has_next():
-            row = nodes_d.get_next()
-            desc = row[0]
-            net.add_node(f"decision::{desc}", label=desc, color="#f1c40f", shape="triangle")
+        try:
+            nodes_d = conn.execute("MATCH (d:Decision) RETURN d.description")
+            while nodes_d.has_next():
+                row = nodes_d.get_next()
+                desc = row[0]
+                net.add_node(f"decision::{desc}", label=desc, color="#f1c40f", shape="triangle")
+        except: pass
 
-        nodes_task = conn.execute("MATCH (t:Task) RETURN t.description")
-        while nodes_task.has_next():
-            row = nodes_task.get_next()
-            desc = row[0]
-            net.add_node(f"task::{desc}", label=desc, color="#3498db", shape="dot")
+        try:
+            nodes_task = conn.execute("MATCH (t:Task) RETURN t.description")
+            while nodes_task.has_next():
+                row = nodes_task.get_next()
+                desc = row[0]
+                net.add_node(f"task::{desc}", label=desc, color="#3498db", shape="dot")
+        except: pass
 
         # Edges
         edges_res = conn.execute("MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description")

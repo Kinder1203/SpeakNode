@@ -35,7 +35,7 @@ class SpeakNodeEngine:
         self.extractor = Extractor(model_name="qwen2.5:14b")
         
         # DB 경로 미리 계산
-        self.db_path = os.path.join(project_root, "database", "speaknode.kuzu")
+        self.db_path = os.path.join(project_root, "database", "chats", "default.kuzu")
         print("✅ [System] 엔진 준비 완료!")
 
     def process(self, audio_path: str, db_path: str | None = None):

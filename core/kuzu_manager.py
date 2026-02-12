@@ -7,9 +7,10 @@ class KuzuManager:
         if db_path is None:
             db_path = "./database/speaknode.kuzu"
             
-        # DB 경로의 상위 폴더 생성
-        if not os.path.exists(os.path.dirname(db_path)):
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        # DB 경로의 상위 폴더 생성 (dirname이 빈 문자열일 때 방어)
+        parent_dir = os.path.dirname(db_path)
+        if parent_dir and not os.path.exists(parent_dir):
+            os.makedirs(parent_dir, exist_ok=True)
             
         self.db_path = db_path
         self.db = kuzu.Database(db_path)
@@ -19,14 +20,11 @@ class KuzuManager:
     def close(self):
         """DB 리소스를 명시적으로 해제하여 Lock 방지"""
         try:
+            # Connection → Database 순서로 해제 (의존 순서 역순)
             if getattr(self, "conn", None) is not None:
-                # KuzuDB Connection 객체 해제
-                del self.conn
+                self.conn = None
             if getattr(self, "db", None) is not None:
-                del self.db
-
-            self.conn = None
-            self.db = None
+                self.db = None
             print("💾 KuzuDB 리소스가 안전하게 해제되었습니다.")
         except Exception as e:
             print(f"⚠️ DB 해제 중 오류 발생: {e}")

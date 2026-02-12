@@ -149,7 +149,10 @@ def reset_chat(chat_id: str):
         return {"status": "success", "chat_id": safe_chat_id, "message": "already empty"}
 
     try:
-        os.remove(db_path)
+        if os.path.isfile(db_path):
+            os.remove(db_path)
+        else:
+            shutil.rmtree(db_path)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"failed to reset chat db: {e}")
 
