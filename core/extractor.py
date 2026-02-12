@@ -2,11 +2,13 @@ import re
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+from core.config import SpeakNodeConfig
 
 class Extractor:
-    def __init__(self, model_name="qwen2.5:14b"):
-        self.model_name = model_name
-        self.llm = ChatOllama(model=model_name, temperature=0.0, format="json")
+    def __init__(self, config: SpeakNodeConfig = None, model_name=None):
+        cfg = config or SpeakNodeConfig()
+        self.model_name = model_name or cfg.llm_model
+        self.llm = ChatOllama(model=self.model_name, temperature=cfg.llm_temperature, format="json")
         self.prompt = ChatPromptTemplate.from_messages(
             [
                 ("system", self._build_system_prompt()),

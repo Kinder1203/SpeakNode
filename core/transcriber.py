@@ -1,12 +1,19 @@
 import os
 import torch
 from faster_whisper import WhisperModel
+from core.config import SpeakNodeConfig
 
 class Transcriber:
-    def __init__(self, model_size="large-v3", device=None):
+    def __init__(self, config: SpeakNodeConfig = None, model_size=None, device=None):
         """
         Whisper 모델 초기화 (서버 구동 시 1회 실행됨)
+        config가 주어지면 config 우선, 아니면 개별 인자 사용 (역호환)
         """
+        cfg = config or SpeakNodeConfig()
+        self.language = cfg.whisper_language
+        self.beam_size = cfg.whisper_beam_size
+        _model_size = model_size or cfg.whisper_model
+
         # 디바이스 자동 감지 (RunPod GPU 우선)
         if device is None:
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -16,12 +23,12 @@ class Transcriber:
         # GPU 사용 시 float16, CPU 사용 시 int8 (속도 최적화)
         compute_type = "float16" if self.device == "cuda" else "int8"
         
-        print(f"🚀 [Transcriber] Loading model '{model_size}' on {self.device} ({compute_type})...")
+        print(f"🚀 [Transcriber] Loading model '{_model_size}' on {self.device} ({compute_type})...")
         
         try:
             # 모델 로드 (다운로드 및 캐싱 자동 처리)
             self.model = WhisperModel(
-                model_size, 
+                _model_size, 
                 device=self.device, 
                 compute_type=compute_type
             )
@@ -40,12 +47,11 @@ class Transcriber:
 
         print(f"🎧 [Transcriber] Processing audio: {os.path.basename(audio_path)}")
         
-        # Transcribe 실행 (beam_size=5로 정확도 확보)
-        # language="ko"를 지정하면 한국어 인식률이 더 올라갑니다.
+        # Transcribe 실행
         segments, info = self.model.transcribe(
             audio_path, 
-            beam_size=5, 
-            language="ko",
+            beam_size=self.beam_size, 
+            language=self.language,
             # 1. VAD 필터를 끄거나, 임계값을 조절합니다.
             vad_filter=True, 
             vad_parameters=dict(

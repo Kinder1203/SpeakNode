@@ -46,8 +46,8 @@ Create NODE TABLE Person(name STRING, role STRING, PRIMARY KEY(name))
 Create NODE TABLE Topic(title STRING, summary STRING, PRIMARY KEY(title))
 Create NODE TABLE Task(description STRING, deadline STRING, status STRING, PRIMARY KEY(description))
 Create NODE TABLE Decision(description STRING, PRIMARY KEY(description))
-/* [Updated] Vector Search 지원을 위한 임베딩 컬럼 및 타입 변경 */
 Create NODE TABLE Utterance(id STRING, text STRING, startTime FLOAT, endTime FLOAT, embedding FLOAT[384], PRIMARY KEY(id))
+Create NODE TABLE Meeting(id STRING, title STRING, date STRING, source_file STRING, PRIMARY KEY(id))
 ```
 
 ### B. Relationship Tables (엣지)
@@ -57,6 +57,8 @@ Create REL TABLE ASSIGNED_TO(FROM Person TO Task)
 Create REL TABLE RESULTED_IN(FROM Topic TO Decision)
 Create REL TABLE SPOKE(FROM Person TO Utterance)
 Create REL TABLE NEXT(FROM Utterance TO Utterance)
+Create REL TABLE DISCUSSED(FROM Meeting TO Topic)
+Create REL TABLE CONTAINS(FROM Meeting TO Utterance)
 ```
 
 5. 📂 Directory Structure (폴더 구조 - 이원화)
@@ -66,7 +68,8 @@ SpeakNode/
 ├── assets/                      # 공용 아이콘, 로고 이미지
 ├── core/                        # [The Brain - 핵심 로직 (Python)]
 │   ├── __init__.py
-│   ├── pipeline.py              # 전체 실행 파이프라인
+│   ├── pipeline.py              # 전체 실행 파이프라인 (개별 단계 노출)
+│   ├── config.py                # 중앙 설정 (모델명, 차원, 경로 등)
 │   ├── agent.py                 # [Phase 4] LangGraph 지능형 에이전트
 │   ├── transcriber.py           # Faster-Whisper 설정 및 실행
 │   ├── extractor.py             # LLM 정보 추출 프롬프트
