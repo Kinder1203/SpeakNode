@@ -1,9 +1,14 @@
+import logging
 import re
+
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
+
 from core.config import SpeakNodeConfig
 from core.domain import AnalysisResult, Topic, Decision, Task, Person
+
+logger = logging.getLogger(__name__)
 
 class Extractor:
     def __init__(self, config: SpeakNodeConfig = None, model_name=None):
@@ -116,6 +121,6 @@ Hard rules:
         try:
             raw = self.chain.invoke({"transcript": transcript})
             return self._normalize(raw, transcript)
-        except Exception as e:
-            print(f"❌ [Extractor Error] {self.model_name}: {str(e)}")
-            raise e
+        except Exception:
+            logger.exception("❌ [Extractor Error] %s", self.model_name)
+            raise

@@ -1,7 +1,12 @@
+import logging
 import os
+
 import torch
 from faster_whisper import WhisperModel
+
 from core.config import SpeakNodeConfig
+
+logger = logging.getLogger(__name__)
 
 class Transcriber:
     def __init__(self, config: SpeakNodeConfig = None, model_size=None, device=None):
@@ -24,7 +29,7 @@ class Transcriber:
         # GPU 사용 시 float16, CPU 사용 시 int8 (속도 최적화)
         compute_type = "float16" if self.device == "cuda" else "int8"
         
-        print(f"🚀 [Transcriber] Loading model '{_model_size}' on {self.device} ({compute_type})...")
+        logger.info("🚀 [Transcriber] Loading model '%s' on %s (%s)...", _model_size, self.device, compute_type)
         
         try:
             # 모델 로드 (다운로드 및 캐싱 자동 처리)
@@ -33,28 +38,28 @@ class Transcriber:
                 device=self.device, 
                 compute_type=compute_type
             )
-            print(f"✅ [Transcriber] Model loaded ready.")
+            logger.info("✅ [Transcriber] Model loaded ready.")
         except Exception as e:
-            print(f"❌ [Transcriber] Critical Error loading model: {e}")
-            raise e
+            logger.critical("❌ [Transcriber] Critical Error loading model: %s", e)
+            raise
 
         # --- 화자 분리(Diarization) 초기화 (선택적) ---
         self.diarization_pipeline = None
         if cfg.enable_diarization and cfg.hf_token:
             try:
                 from pyannote.audio import Pipeline as DiarizationPipeline
-                print("🎙️ [Transcriber] Loading Speaker Diarization model...")
+                logger.info("🎙️ [Transcriber] Loading Speaker Diarization model...")
                 self.diarization_pipeline = DiarizationPipeline.from_pretrained(
                     "pyannote/speaker-diarization-3.1",
                     use_auth_token=cfg.hf_token,
                 )
                 if self.device == "cuda":
                     self.diarization_pipeline.to(torch.device("cuda"))
-                print("✅ [Transcriber] Diarization model loaded.")
+                logger.info("✅ [Transcriber] Diarization model loaded.")
             except ImportError:
-                print("⚠️ [Transcriber] pyannote.audio 미설치. 화자 분리 비활성화.")
+                logger.warning("⚠️ [Transcriber] pyannote.audio 미설치. 화자 분리 비활성화.")
             except Exception as e:
-                print(f"⚠️ [Transcriber] Diarization 로드 실패 (계속 진행): {e}")
+                logger.warning("⚠️ [Transcriber] Diarization 로드 실패 (계속 진행): %s", e)
 
     def _assign_speakers(self, segments: list[dict], diarization_result) -> list[dict]:
         """
@@ -84,10 +89,10 @@ class Transcriber:
         오디오 파일 경로를 받아 텍스트와 메타데이터 반환
         """
         if not os.path.exists(audio_path):
-            print(f"⚠️ [Error] File not found: {audio_path}")
+            logger.error("⚠️ [Error] File not found: %s", audio_path)
             return None
 
-        print(f"🎧 [Transcriber] Processing audio: {os.path.basename(audio_path)}")
+        logger.info("🎧 [Transcriber] Processing audio: %s", os.path.basename(audio_path))
         
         # Transcribe 실행
         segments, info = self.model.transcribe(
@@ -103,7 +108,7 @@ class Transcriber:
             # 2. 문장 중간에 끊기는 걸 방지하기 위해 추가
             condition_on_previous_text=True 
         )  
-        print(f"   ℹ️ Detected language: '{info.language}' (Probability: {info.language_probability:.2f})")
+        logger.info("   ℹ️ Detected language: '%s' (Probability: %.2f)", info.language, info.language_probability)
         
         # Generator를 리스트로 변환 (DB 저장용 포맷팅)
         result_data = []
@@ -111,7 +116,7 @@ class Transcriber:
             # 텍스트가 비어있지 않은 경우만 처리
             if segment.text.strip():
                 # 콘솔에 진행 상황 실시간 출력 (디버깅용)
-                print(f"   [{segment.start:.2f}s -> {segment.end:.2f}s] {segment.text}")
+                logger.debug("   [%.2fs -> %.2fs] %s", segment.start, segment.end, segment.text)
                 
                 result_data.append({
                     "start": segment.start,
@@ -122,15 +127,15 @@ class Transcriber:
         # --- 화자 분리 적용 (활성화된 경우) ---
         if self.diarization_pipeline and result_data:
             try:
-                print("🎙️ [Transcriber] 화자 분리 수행 중...")
+                logger.info("🎙️ [Transcriber] 화자 분리 수행 중...")
                 diarization_result = self.diarization_pipeline(audio_path)
                 result_data = self._assign_speakers(result_data, diarization_result)
                 speaker_set = set(seg.get("speaker", "Unknown") for seg in result_data)
-                print(f"✅ [Transcriber] 화자 분리 완료. 감지된 화자: {speaker_set}")
+                logger.info("✅ [Transcriber] 화자 분리 완료. 감지된 화자: %s", speaker_set)
             except Exception as e:
-                print(f"⚠️ [Transcriber] 화자 분리 실패 (STT 결과는 유지): {e}")
+                logger.warning("⚠️ [Transcriber] 화자 분리 실패 (STT 결과는 유지): %s", e)
 
-        print(f"✅ [Transcriber] Completed. Total segments: {len(result_data)}")
+        logger.info("✅ [Transcriber] Completed. Total segments: %d", len(result_data))
         return result_data
 
 # ==========================================

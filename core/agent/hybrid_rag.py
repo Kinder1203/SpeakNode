@@ -6,6 +6,7 @@ Agent의 Tool이 이 모듈을 호출하여 회의 DB에서 정보를 탐색합�
 """
 
 import json
+import logging
 import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -13,6 +14,9 @@ from langchain_ollama import ChatOllama
 
 from core.config import SpeakNodeConfig
 from core.db.kuzu_manager import KuzuManager
+from core.embedding import get_embedder
+
+logger = logging.getLogger(__name__)
 
 FORBIDDEN_CYPHER_TOKENS = (
     "CREATE",
@@ -38,17 +42,12 @@ class HybridRAG:
 
     def __init__(self, config: SpeakNodeConfig = None):
         self.config = config or SpeakNodeConfig()
-        self._embedder = None  # Lazy Loading
         self._cypher_llm = None
 
     @property
     def embedder(self):
-        """SentenceTransformer — 최초 검색 시 1회만 로드"""
-        if self._embedder is None:
-            from sentence_transformers import SentenceTransformer
-            print("   ⏳ Loading Embedding Model (HybridRAG)...")
-            self._embedder = SentenceTransformer(self.config.embedding_model)
-        return self._embedder
+        """Embedding 모델 — 프로세스 전역 싱글턴 캐시를 통해 반환."""
+        return get_embedder(self.config.embedding_model)
 
     @property
     def cypher_llm(self):

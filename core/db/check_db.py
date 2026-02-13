@@ -1,76 +1,78 @@
-import kuzu
-import os
+"""SpeakNode DB 진단 스크립트.
 
-def check_database():
-    print("🚀 [Debug] DB 검증 스크립트 시작!")
-    
-    # 1. 현재 경로 확인
-    current_dir = os.getcwd()
-    print(f"📍 현재 작업 경로: {current_dir}")
-    
-    # 2. DB 경로 찾기
-    db_path = "./database/speaknode.kuzu"
-    
-    if not os.path.exists(os.path.dirname(db_path)):
-        print(f"❌ DB 폴더를 찾을 수 없습니다: {db_path}")
+사용법:
+    python -m core.db.check_db [chat_id]
+
+chat_id를 생략하면 모든 채팅 DB를 진단합니다.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+from core.config import SpeakNodeConfig, get_chat_db_path, list_chat_ids
+from core.db.kuzu_manager import KuzuManager
+
+_NODE_TABLES = ["Person", "Topic", "Task", "Decision", "Utterance", "Meeting"]
+
+
+def check_database(chat_id: str | None = None) -> None:
+    """*chat_id* 하나 또는 전체 DB를 점검한다."""
+    config = SpeakNodeConfig()
+
+    if chat_id:
+        _check_single(chat_id, config)
+    else:
+        ids = list_chat_ids(config)
+        if not ids:
+            print("등록된 채팅 DB가 없습니다.")
+            return
+        for cid in sorted(ids):
+            _check_single(cid, config)
+            print()
+
+
+def _check_single(chat_id: str, config: SpeakNodeConfig) -> None:
+    db_path = get_chat_db_path(chat_id, config)
+    print(f"=== Chat: {chat_id} ===")
+    print(f"    경로: {db_path}")
+
+    if not os.path.exists(db_path):
+        print("    ❌ DB 파일/폴더가 존재하지 않습니다.")
         return
 
-    print(f"🔎 DB 찾는 중: {db_path}")
-
-    db = None
-    conn = None
     try:
-        # 3. DB 연결
-        db = kuzu.Database(db_path)
-        conn = kuzu.Connection(db)
-        print("✅ DB 연결 성공!")
-        
-        # 4. 전체 테이블 목록 확인
-        print("\n--- [1. 테이블 목록 조회] ---")
-        tables_result = conn.execute("CALL show_tables() RETURN *")
-        
-        # [수정] hasNext() -> has_next() / getNext() -> get_next()
-        while tables_result.has_next():
-            print(f"   📄 {tables_result.get_next()}")
-            
-        # 5. 각 테이블별 데이터 개수 세기
-        print("\n--- [2. 데이터 개수 카운트] ---")
-        target_tables = ["Person", "Topic", "Task", "Decision", "Utterance"]
-        
-        for table in target_tables:
-            try:
-                count_result = conn.execute(f"MATCH (n:{table}) RETURN count(n)")
-                if count_result.has_next():
-                    count = count_result.get_next()[0]
-                    print(f"   📊 {table}: {count}개")
-            except Exception as e:
-                # 테이블이 없으면 그냥 넘어감
-                pass
+        with KuzuManager(db_path=db_path, config=config) as db:
+            print("    ✅ DB 연결 성공")
 
-        # 6. 실제 데이터(Topic) 내용 까보기
-        print("\n--- [3. Topic 데이터 내용] ---")
-        topic_result = conn.execute("MATCH (t:Topic) RETURN t.title, t.summary")
-        
-        if topic_result.has_next():
-            while topic_result.has_next():
-                row = topic_result.get_next()
-                print(f"   📌 제목: {row[0]}")
-                # 요약이 있을 경우 출력
-                summary = row[1] if row[1] else "(내용 없음)"
-                print(f"   📝 요약: {summary}")
-        else:
-            print("   (저장된 Topic 데이터가 없습니다.)")
-            
-    except Exception as e:
-        print(f"\n❌ [Error] : {e}")
-    finally:
-        try:
-            if conn is not None and hasattr(conn, "close"):
-                conn.close()
-            if db is not None and hasattr(db, "close"):
-                db.close()
-        except Exception:
-            pass
+            # 1) 테이블 목록
+            print("\n    --- 테이블 목록 ---")
+            for row in db.execute_cypher("CALL show_tables() RETURN *"):
+                print(f"        📄 {row}")
+
+            # 2) 노드 카운트
+            print("\n    --- 노드 카운트 ---")
+            for table in _NODE_TABLES:
+                try:
+                    rows = db.execute_cypher(f"MATCH (n:{table}) RETURN count(n)")
+                    count = rows[0][0] if rows else 0
+                    print(f"        📊 {table}: {count}개")
+                except Exception:
+                    pass  # 테이블 미존재 시 무시
+
+            # 3) Topic 샘플
+            print("\n    --- Topic 데이터 ---")
+            topics = db.execute_cypher("MATCH (t:Topic) RETURN t.title, t.summary")
+            if not topics:
+                print("        (저장된 Topic이 없습니다.)")
+            for row in topics:
+                print(f"        📌 제목: {row[0]}")
+                print(f"        📝 요약: {row[1] or '(내용 없음)'}")
+    except Exception as exc:
+        print(f"    ❌ 오류: {exc}")
+
 
 if __name__ == "__main__":
-    check_database()
+    _target = sys.argv[1] if len(sys.argv) > 1 else None
+    check_database(_target)

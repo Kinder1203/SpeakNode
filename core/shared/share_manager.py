@@ -1,10 +1,13 @@
 import json
+import logging
 import textwrap
 import base64
 import zlib
 from PIL import Image, ImageDraw, ImageFont
 from PIL.PngImagePlugin import PngInfo
 import os
+
+logger = logging.getLogger(__name__)
 
 MAX_EMBEDDED_PAYLOAD_BYTES = 32 * 1024 * 1024
 
@@ -49,7 +52,7 @@ class ShareManager:
                 raise FileNotFoundError("No suitable font found.")
                 
         except Exception as e:
-            print(f"⚠️ 폰트 로드 실패({e}). 기본 폰트를 사용합니다 (한글 깨짐 가능성 있음).")
+            logger.warning("⚠️ 폰트 로드 실패(%s). 기본 폰트를 사용합니다 (한글 깨짐 가능성 있음).", e)
             font_title = ImageFont.load_default()
             font_text = ImageFont.load_default()
 
@@ -76,7 +79,7 @@ class ShareManager:
         # 4. 저장
         save_path = os.path.join(self.output_dir, filename)
         img.save(save_path, "PNG", pnginfo=metadata)
-        print(f"🖼️ [Share] 이미지 카드 생성 완료: {save_path}")
+        logger.info("🖼️ [Share] 이미지 카드 생성 완료: %s", save_path)
         return save_path
 
     def load_data_from_image(self, image_path):
@@ -87,16 +90,16 @@ class ShareManager:
             legacy_json = img.text.get("speaknode_data")
 
             if compressed:
-                print(f"🔓 [Share] 이미지에서 압축 데이터 추출 성공!")
+                logger.info("🔓 [Share] 이미지에서 압축 데이터 추출 성공!")
                 return self._decode_payload(compressed)
             if legacy_json:
-                print(f"🔓 [Share] 이미지에서 데이터 추출 성공!")
+                logger.info("🔓 [Share] 이미지에서 데이터 추출 성공!")
                 return json.loads(legacy_json)
 
-            print(f"⚠️ [Share] 이 이미지는 SpeakNode 데이터가 없습니다.")
+            logger.warning("⚠️ [Share] 이 이미지는 SpeakNode 데이터가 없습니다.")
             return None
         except Exception as e:
-            print(f"❌ [Share] 이미지 읽기 실패: {e}")
+            logger.error("❌ [Share] 이미지 읽기 실패: %s", e)
             return None
 
     @staticmethod

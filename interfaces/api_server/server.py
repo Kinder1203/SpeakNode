@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from core.config import SpeakNodeConfig, get_chat_db_path, list_chat_ids, sanitize_chat_id
 from core.db.kuzu_manager import KuzuManager, decode_scoped_value
 from core.pipeline import SpeakNodeEngine
+from core.utils import ALLOWED_TASK_STATUSES
 
 # -----------------------------------------------------------------------------
 # Runtime Configuration
@@ -29,7 +30,6 @@ if not logger.handlers:
     )
 
 ALLOWED_AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a"}
-ALLOWED_TASK_STATUSES = {"pending", "in_progress", "done", "blocked"}
 MAX_AUDIO_SIZE_BYTES = 512 * 1024 * 1024  # 512 MB
 TEMP_UPLOAD_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
@@ -78,6 +78,7 @@ NODE_UPDATE_RULES: dict[str, dict[str, Any]] = {
     "Task": {"pk": "description", "fields": {"deadline", "status"}},
     "Person": {"pk": "name", "fields": {"role"}},
     "Meeting": {"pk": "id", "fields": {"title", "date", "source_file"}},
+    "Decision": {"pk": "description", "fields": set()},
 }
 
 
@@ -300,6 +301,10 @@ async def reset_chat(chat_id: str):
                 status_code=500,
                 detail=f"failed to reset chat db: {exc}",
             ) from exc
+
+    # DB 삭제 후 더 이상 필요 없는 lock 객체 정리 (메모리 누수 방지)
+    async with _chat_locks_guard:
+        _chat_locks.pop(safe_chat_id, None)
 
     return {"status": "success", "chat_id": safe_chat_id, "message": "reset complete"}
 

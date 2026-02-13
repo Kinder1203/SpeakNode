@@ -1,22 +1,14 @@
-import kuzu
+import logging
 import os
+
+import kuzu
+
 from core.config import SpeakNodeConfig
+from core.utils import normalize_task_status
 
-ALLOWED_TASK_STATUSES = {"pending", "in_progress", "done", "blocked"}
+logger = logging.getLogger(__name__)
+
 SCOPED_VALUE_SEPARATOR = "::"
-
-
-def _normalize_task_status(raw: str) -> str:
-    status = str(raw or "").strip().lower()
-    aliases = {
-        "to do": "pending",
-        "todo": "pending",
-        "in progress": "in_progress",
-        "complete": "done",
-        "completed": "done",
-    }
-    normalized = aliases.get(status, status)
-    return normalized if normalized in ALLOWED_TASK_STATUSES else "pending"
 
 
 def build_scoped_value(meeting_id: str | None, value: str) -> str:
@@ -63,6 +55,7 @@ class KuzuManager:
         self.db = kuzu.Database(db_path)
         self.conn = kuzu.Connection(self.db)
         self._initialize_schema()
+        logger.debug("KuzuDB 연결 완료: %s", db_path)
 
     # --- Context Manager ---
     def __enter__(self):
@@ -84,9 +77,9 @@ class KuzuManager:
                 if hasattr(self.db, "close"):
                     self.db.close()
                 self.db = None
-            print("💾 KuzuDB 리소스가 안전하게 해제되었습니다.")
+            logger.debug("💾 KuzuDB 리소스가 안전하게 해제되었습니다.")
         except Exception as e:
-            print(f"⚠️ DB 해제 중 오류 발생: {e}")
+            logger.warning("⚠️ DB 해제 중 오류 발생: %s", e)
 
     def _initialize_schema(self):
         """
@@ -123,7 +116,7 @@ class KuzuManager:
                 except Exception as e:
                     # 이미 존재하는 테이블 에러는 무시
                     if "already exists" not in str(e).lower():
-                        print(f"⚠️ 스키마 생성 중 예외 발생 ({definition}): {e}")
+                        logger.warning("⚠️ 스키마 생성 중 예외 발생 (%s): %s", definition, e)
 
     def ingest_transcript(self, segments: list, embeddings: list = None, meeting_id: str = None) -> int:
         """
@@ -133,15 +126,18 @@ class KuzuManager:
         - meeting_id: 회의 ID (있으면 Meeting-CONTAINS 연결)
         반환값: 성공적으로 적재된 세그먼트 수
         """
-        print(f"📥 [DB] 대화 내용 적재 시작 (총 {len(segments)} 문장)...")
+        logger.info("📥 [DB] 대화 내용 적재 시작 (총 %d 문장)...", len(segments))
         dim = self.config.embedding_dim
         previous_id = None
         ingested_count = 0
         
         # --- 임베딩 싱크 검증 ---
         if embeddings is not None and len(embeddings) != len(segments):
-            print(f"⚠️ [DB] 임베딩 길이 불일치! segments={len(segments)}, embeddings={len(embeddings)}. "
-                  f"부족분은 제로벡터로 채워집니다 (Vector RAG 품질 저하 가능).")
+            logger.warning(
+                "⚠️ [DB] 임베딩 길이 불일치! segments=%d, embeddings=%d. "
+                "부족분은 제로벡터로 채워집니다 (Vector RAG 품질 저하 가능).",
+                len(segments), len(embeddings),
+            )
         
         try:
             for i, seg in enumerate(segments):
@@ -185,11 +181,11 @@ class KuzuManager:
                 previous_id = u_id
                 ingested_count += 1
                 
-            print(f"✅ [DB] 대화 흐름(NEXT) 및 화자(SPOKE) 연결 완료. ({ingested_count}/{len(segments)}건 적재)")
-            
-        except Exception as e:
-            print(f"❌ 대화 내용 적재 중 오류 (적재 완료: {ingested_count}/{len(segments)}건): {e}")
-            raise e
+            logger.info("✅ [DB] 대화 흐름(NEXT) 및 화자(SPOKE) 연결 완료. (%d/%d건 적재)", ingested_count, len(segments))
+
+        except Exception:
+            logger.exception("❌ 대화 내용 적재 중 오류 (적재 완료: %d/%d건)", ingested_count, len(segments))
+            raise
         
         return ingested_count
 
@@ -341,7 +337,7 @@ class KuzuManager:
                 {
                     "desc": desc,
                     "due": item.get("deadline", "TBD"),
-                    "status": _normalize_task_status(item.get("status", "pending")),
+                    "status": normalize_task_status(item.get("status", "pending")),
                 },
             )
         for item in nodes.get("decisions", []):
@@ -478,7 +474,7 @@ class KuzuManager:
             for task in analysis_result.get("tasks", []):
                 desc_text = str(task.get('description', '')).strip() or "No Description"
                 scoped_desc = build_scoped_value(meeting_id, desc_text)
-                status = _normalize_task_status(task.get("status", "pending"))
+                status = normalize_task_status(task.get("status", "pending"))
                 self.conn.execute(
                     "MERGE (t:Task {description: $task_desc}) "
                     "ON CREATE SET t.deadline = $due, t.status = $status",
@@ -520,9 +516,9 @@ class KuzuManager:
                         {"title": resolved_topic_key, "decision_desc": scoped_desc}
                     )
 
-            print(f"🎉 지식 그래프(Knowledge Graph) 적재 완료!")
-        except Exception as e:
-            print(f"❌ 분석 데이터 적재 중 오류: {e}")
+            logger.info("🎉 지식 그래프(Knowledge Graph) 적재 완료!")
+        except Exception:
+            logger.exception("❌ 분석 데이터 적재 중 오류")
             raise
 
     # ================================================================
@@ -538,7 +534,7 @@ class KuzuManager:
             "MERGE (m:Meeting {id: $id}) ON CREATE SET m.title = $title, m.date = $date, m.source_file = $src",
             {"id": meeting_id, "title": title, "date": date, "src": source_file}
         )
-        print(f"📋 [DB] Meeting 생성: '{title}' ({meeting_id})")
+        logger.info("📋 [DB] Meeting 생성: '%s' (%s)", title, meeting_id)
         return meeting_id
 
     # ================================================================
@@ -601,7 +597,7 @@ class KuzuManager:
             "id": r[0],
             "description": decode_scoped_value(r[0]),
             "deadline": r[1],
-            "status": _normalize_task_status(r[2]),
+            "status": normalize_task_status(r[2]),
             "assignee": r[3],
             "meeting_id": extract_scope_from_value(r[0]),
         } for r in rows]
@@ -617,7 +613,7 @@ class KuzuManager:
             "id": r[0],
             "description": decode_scoped_value(r[0]),
             "deadline": r[1],
-            "status": _normalize_task_status(r[2]),
+            "status": normalize_task_status(r[2]),
             "meeting_id": extract_scope_from_value(r[0]),
         } for r in rows]
 
@@ -765,7 +761,7 @@ class KuzuManager:
                     "id": r[0],
                     "description": decode_scoped_value(r[0]),
                     "deadline": r[1],
-                    "status": _normalize_task_status(r[2]),
+                    "status": normalize_task_status(r[2]),
                     "assignee": r[3],
                     "meeting_id": extract_scope_from_value(r[0]),
                 }
@@ -800,5 +796,5 @@ class KuzuManager:
                 "start": r[2], "end": r[3], "score": r[4]
             } for r in rows]
         except Exception as e:
-            print(f"⚠️ [Vector Search] 검색 실패: {e}")
+            logger.warning("⚠️ [Vector Search] 검색 실패: %s", e)
             return []
