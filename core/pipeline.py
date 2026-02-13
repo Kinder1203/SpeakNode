@@ -6,16 +6,9 @@ Agent만 사용하는 경우 Whisper 모델(수 GB)을 로드하지 않습니다
 """
 
 import os
-import sys
-
-# 프로젝트 루트 경로 설정
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "../"))
-if project_root not in sys.path:
-    sys.path.append(project_root)
 
 from core.config import SpeakNodeConfig
-from core.kuzu_manager import KuzuManager
+from core.db.kuzu_manager import KuzuManager
 
 
 class SpeakNodeEngine:
@@ -40,7 +33,7 @@ class SpeakNodeEngine:
     @property
     def transcriber(self):
         if self._transcriber is None:
-            from core.transcriber import Transcriber
+            from core.stt.transcriber import Transcriber
             print("   ⏳ Loading Whisper (Ear)...")
             self._transcriber = Transcriber(config=self.config)
         return self._transcriber
@@ -56,7 +49,7 @@ class SpeakNodeEngine:
     @property
     def extractor(self):
         if self._extractor is None:
-            from core.extractor import Extractor
+            from core.llm.extractor import Extractor
             print("   ⏳ Loading LLM (Brain)...")
             self._extractor = Extractor(config=self.config)
         return self._extractor
@@ -92,7 +85,7 @@ class SpeakNodeEngine:
 
         return all_embeddings
 
-    def extract(self, transcript_text: str) -> dict:
+    def extract(self, transcript_text: str):
         """Step 3: 텍스트에서 Topic/Task/Decision 추출."""
         return self.extractor.extract(transcript_text)
 
@@ -156,7 +149,7 @@ class SpeakNodeEngine:
         해당 DB에 연결된 AI Agent 인스턴스를 반환합니다.
         Whisper/Embedding 모델을 로딩하지 않고 Agent만 생성합니다.
         """
-        from core.agent import SpeakNodeAgent
+        from core.agent.agent import SpeakNodeAgent
 
         target_db_path = db_path or self.config.get_chat_db_path()
         return SpeakNodeAgent(db_path=target_db_path, config=self.config)

@@ -5,9 +5,8 @@ Vector RAG (의미 기반) + Graph RAG (구조 기반) 결합 검색.
 Agent의 Tool이 이 모듈을 호출하여 회의 DB에서 정보를 탐색합니다.
 """
 
-from sentence_transformers import SentenceTransformer
 from core.config import SpeakNodeConfig
-from core.kuzu_manager import KuzuManager
+from core.db.kuzu_manager import KuzuManager
 
 
 class HybridRAG:
@@ -20,16 +19,23 @@ class HybridRAG:
 
     def __init__(self, config: SpeakNodeConfig = None):
         self.config = config or SpeakNodeConfig()
-        self.embedder = SentenceTransformer(self.config.embedding_model)
+        self._embedder = None  # Lazy Loading
+
+    @property
+    def embedder(self):
+        """SentenceTransformer — 최초 검색 시 1회만 로드"""
+        if self._embedder is None:
+            from sentence_transformers import SentenceTransformer
+            print("   ⏳ Loading Embedding Model (HybridRAG)...")
+            self._embedder = SentenceTransformer(self.config.embedding_model)
+        return self._embedder
 
     # ================================================================
     # 🔍 Vector RAG — 의미 기반 검색
     # ================================================================
 
     def vector_search(self, query: str, db: KuzuManager, top_k: int = 5) -> list[dict]:
-        """
-        자연어 질의를 벡터화하여 가장 유사한 Utterance를 찾습니다.
-        """
+        """자연어 질의를 벡터화하여 가장 유사한 Utterance를 찾습니다."""
         query_vec = self.embedder.encode(query).tolist()
         results = db.search_similar_utterances(query_vec, top_k=top_k)
         return results

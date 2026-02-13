@@ -22,16 +22,16 @@ from langchain_ollama import ChatOllama
 from langgraph.graph import StateGraph, END
 
 from core.config import SpeakNodeConfig
-from core.kuzu_manager import KuzuManager
-from core.hybrid_rag import HybridRAG
+from core.db.kuzu_manager import KuzuManager
+from core.agent.hybrid_rag import HybridRAG
 
 # --- Tool 자동 수집 --------------------------------
 # tools 패키지의 default_registry에 모든 도구가 등록됨
-from core.tools import default_registry as tool_registry
-import core.tools.search_tools    # noqa: F401  — 등록 트리거
-import core.tools.meeting_tools   # noqa: F401
-import core.tools.email_tools     # noqa: F401
-import core.tools.general_tools   # noqa: F401
+from core.agent.tools import default_registry as tool_registry
+import core.agent.tools.search_tools    # noqa: F401  — 등록 트리거
+import core.agent.tools.meeting_tools   # noqa: F401
+import core.agent.tools.email_tools     # noqa: F401
+import core.agent.tools.general_tools   # noqa: F401
 
 
 # ================================================================

@@ -6,46 +6,24 @@ import os
 import sys
 import uuid
 import asyncio
-import re
 from concurrent.futures import ThreadPoolExecutor
 
-# 경로 설정
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "../../"))
-sys.path.append(project_root)
-
 from core.pipeline import SpeakNodeEngine
-from core.kuzu_manager import KuzuManager
+from core.db.kuzu_manager import KuzuManager
+from core.config import SpeakNodeConfig, sanitize_chat_id, get_chat_db_path, list_chat_ids
 
 # Global State
 engine = None
+config = SpeakNodeConfig()
 # Kuzu 단일 파일 DB 잠금 충돌을 줄이기 위해 동시 분석 워커를 1로 제한
 executor = ThreadPoolExecutor(max_workers=1)
-CHAT_DB_DIR = os.path.join(project_root, "database", "chats")
-TEMP_UPLOAD_DIR = os.path.join(project_root, "temp_uploads")
-os.makedirs(CHAT_DB_DIR, exist_ok=True)
+TEMP_UPLOAD_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../temp_uploads")
+os.makedirs(config.db_base_dir, exist_ok=True)
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 
 
-def sanitize_chat_id(raw: str) -> str:
-    safe = re.sub(r"[^0-9A-Za-z_-]+", "_", (raw or "").strip()).strip("_")
-    return safe or "default"
-
-
-def get_chat_db_path(chat_id: str) -> str:
-    return os.path.join(CHAT_DB_DIR, f"{sanitize_chat_id(chat_id)}.kuzu")
-
-
-def list_chat_ids() -> list[str]:
-    chat_ids = []
-    for name in os.listdir(CHAT_DB_DIR):
-        if name.endswith(".kuzu"):
-            chat_ids.append(name[:-5])
-    return sorted(chat_ids)
-
-
 def init_chat_db(chat_id: str) -> str:
-    db_path = get_chat_db_path(chat_id)
+    db_path = get_chat_db_path(chat_id, config)
     mgr = KuzuManager(db_path=db_path)
     mgr.close()
     return db_path
@@ -63,7 +41,6 @@ async def lifespan(app: FastAPI):
         print("✅ [Server] 엔진 로딩 완료.")
     except Exception as e:
         print(f"🔥 [Critical] 엔진 로딩 실패: {e}")
-        # [Fix] 초기화 실패 시 서버를 종료시켜야 함 (계속 실행되면 503 좀비 서버 됨)
         sys.exit(1)
     
     yield
@@ -79,7 +56,7 @@ async def analyze_audio(file: UploadFile = File(...), chat_id: str = Form("defau
         raise HTTPException(status_code=503, detail="Server not ready")
 
     safe_chat_id = sanitize_chat_id(chat_id)
-    chat_db_path = get_chat_db_path(safe_chat_id)
+    chat_db_path = get_chat_db_path(safe_chat_id, config)
 
     # 1. UUID 파일명 생성
     original_name = file.filename or "audio.bin"
@@ -102,7 +79,6 @@ async def analyze_audio(file: UploadFile = File(...), chat_id: str = Form("defau
 
         return {"status": "success", "chat_id": safe_chat_id, "data": result}
 
-    # [Fix] HTTPException은 그대로 통과시켜야 클라이언트가 400/404 등을 구분 가능
     except HTTPException as he:
         raise he
     except Exception as e:
@@ -113,7 +89,8 @@ async def analyze_audio(file: UploadFile = File(...), chat_id: str = Form("defau
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
-            except: pass
+            except OSError:
+                pass
 
 
 @app.get("/health")
@@ -121,13 +98,13 @@ def health_check():
     return {
         "status": "online",
         "engine_ready": engine is not None,
-        "chat_count": len(list_chat_ids()),
+        "chat_count": len(list_chat_ids(config)),
     }
 
 
 @app.get("/chats")
 def get_chats():
-    return {"status": "success", "chats": list_chat_ids()}
+    return {"status": "success", "chats": list_chat_ids(config)}
 
 
 @app.post("/chats")
@@ -144,7 +121,7 @@ def create_chat(payload: CreateChatRequest):
 @app.delete("/chats/{chat_id}")
 def reset_chat(chat_id: str):
     safe_chat_id = sanitize_chat_id(chat_id)
-    db_path = get_chat_db_path(safe_chat_id)
+    db_path = get_chat_db_path(safe_chat_id, config)
     if not os.path.exists(db_path):
         return {"status": "success", "chat_id": safe_chat_id, "message": "already empty"}
 
@@ -175,7 +152,7 @@ async def agent_query(payload: AgentQueryRequest):
         raise HTTPException(status_code=503, detail="Server not ready")
 
     safe_chat_id = sanitize_chat_id(payload.chat_id)
-    chat_db_path = get_chat_db_path(safe_chat_id)
+    chat_db_path = get_chat_db_path(safe_chat_id, config)
 
     if not os.path.exists(chat_db_path):
         raise HTTPException(
@@ -193,4 +170,3 @@ async def agent_query(payload: AgentQueryRequest):
     except Exception as e:
         print(f"❌ Agent 오류: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-

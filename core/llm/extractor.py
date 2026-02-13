@@ -71,7 +71,7 @@ Hard rules:
             
             # 관련 토픽이 비어있다면 첫 번째 토픽과 연결 (Safe fallback)
             if not related_topic and topics:
-                related_topic = topics[0]['title']
+                related_topic = topics[0].title
 
             if not description: continue
             decisions.append(Decision(description=description, related_topic=related_topic))

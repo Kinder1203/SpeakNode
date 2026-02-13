@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from core.tools import default_registry as registry
+from core.agent.tools import default_registry as registry
 
 
 @registry.register(

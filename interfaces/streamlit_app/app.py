@@ -12,28 +12,18 @@ st.set_page_config(page_title="SpeakNode Dashboard", layout="wide")
 import matplotlib
 matplotlib.use('Agg') # 화면 출력 없는 모드로 강제 설정
 
-# 프로젝트 루트 경로 설정
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.abspath(os.path.join(current_dir, "../../"))
-if project_root not in sys.path:
-    sys.path.append(project_root)
-
-# [Debug] 로딩 상태 확인용 로그
-print("🚀 [App] Importing modules...")
-
 import view_components as vc
 from core.pipeline import SpeakNodeEngine
-from core.share_manager import ShareManager
-from core.kuzu_manager import KuzuManager
+from core.shared.share_manager import ShareManager
+from core.db.kuzu_manager import KuzuManager
+from core.config import SpeakNodeConfig, sanitize_chat_id, get_chat_db_path, list_chat_ids
 
-print("✅ [App] Modules imported successfully.")
-
-# --- 앱 기본 설정 ---
-CHAT_DB_DIR = os.path.join(project_root, "database", "chats")
+_config = SpeakNodeConfig()
+CHAT_DB_DIR = _config.db_base_dir
 os.makedirs(CHAT_DB_DIR, exist_ok=True)
 
-# ShareManager 초기화 (경로 보정)
-# [Fix] 상대 경로 문제 방지를 위해 절대 경로 사용
+# ShareManager 초기화
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 SHARED_CARDS_DIR = os.path.join(project_root, "shared_cards")
 share_mgr = ShareManager(output_dir=SHARED_CARDS_DIR)
 
@@ -50,22 +40,6 @@ if "active_chat_id" not in st.session_state:
     st.session_state["active_chat_id"] = "default"
 
 
-def sanitize_chat_id(raw: str) -> str:
-    safe = re.sub(r"[^0-9A-Za-z_-]+", "_", (raw or "").strip()).strip("_")
-    return safe or "default"
-
-
-def list_chat_ids() -> list[str]:
-    chat_ids = []
-    if os.path.exists(CHAT_DB_DIR):
-        for name in os.listdir(CHAT_DB_DIR):
-            if name.endswith(".kuzu"):
-                chat_ids.append(name[:-5])
-    return sorted(chat_ids)
-
-
-def get_chat_db_path(chat_id: str) -> str:
-    return os.path.join(CHAT_DB_DIR, f"{sanitize_chat_id(chat_id)}.kuzu")
 
 # --- [사이드바] 파일 업로드 및 설정 ---
 vc.render_header()
@@ -78,7 +52,7 @@ with st.sidebar:
     st.divider()
     st.subheader("💬 Chat Sessions")
 
-    chat_ids = list_chat_ids()
+    chat_ids = list_chat_ids(_config)
     active_chat_id = sanitize_chat_id(st.session_state["active_chat_id"])
     if active_chat_id not in chat_ids:
         chat_ids = [active_chat_id] + chat_ids
@@ -103,7 +77,7 @@ with st.sidebar:
         st.success(f"채팅 '{new_chat_id}' 생성 완료")
         st.rerun()
 
-    current_db_path = get_chat_db_path(st.session_state["active_chat_id"])
+    current_db_path = get_chat_db_path(st.session_state["active_chat_id"], _config)
 
     st.divider()
     st.subheader("⚙️ System Settings")

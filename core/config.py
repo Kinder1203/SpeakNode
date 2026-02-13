@@ -53,3 +53,33 @@ class SpeakNodeConfig:
         """chat_id에 해당하는 DB 파일 경로 반환"""
         cid = chat_id or self.default_chat_id
         return os.path.join(self.db_base_dir, f"{cid}.kuzu")
+
+
+# ================================================================
+# Chat Session 유틸리티 (app.py / server.py 공유)
+# ================================================================
+
+import re as _re
+
+
+def sanitize_chat_id(raw: str) -> str:
+    """채팅 ID에서 안전하지 않은 문자 제거"""
+    safe = _re.sub(r"[^0-9A-Za-z_-]+", "_", (raw or "").strip()).strip("_")
+    return safe or "default"
+
+
+def get_chat_db_path(chat_id: str, config: SpeakNodeConfig | None = None) -> str:
+    """chat_id에 해당하는 DB 경로 반환 (standalone 버전)"""
+    cfg = config or SpeakNodeConfig()
+    return cfg.get_chat_db_path(sanitize_chat_id(chat_id))
+
+
+def list_chat_ids(config: SpeakNodeConfig | None = None) -> list[str]:
+    """DB 디렉토리에서 존재하는 채팅 ID 목록 반환"""
+    cfg = config or SpeakNodeConfig()
+    chat_ids = []
+    if os.path.exists(cfg.db_base_dir):
+        for name in os.listdir(cfg.db_base_dir):
+            if name.endswith(".kuzu"):
+                chat_ids.append(name[:-5])
+    return sorted(chat_ids)
