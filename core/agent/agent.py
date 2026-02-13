@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from typing import TypedDict
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -198,7 +199,7 @@ class SpeakNodeAgent:
         )
 
         self.rag = HybridRAG(config=self.config)
-        self._active_db: KuzuManager | None = None
+        self._local = threading.local()
         self.graph = self._build_graph()
 
     def _build_graph(self) -> StateGraph:
@@ -217,9 +218,10 @@ class SpeakNodeAgent:
 
     def _tool_executor(self, state: AgentState) -> AgentState:
         """query() 수명주기 동안 열려 있는 DB 연결을 재사용합니다."""
-        if self._active_db is None:
+        db = getattr(self._local, "active_db", None)
+        if db is None:
             raise RuntimeError("Agent DB가 초기화되지 않았습니다. query() 메서드를 통해 호출하세요.")
-        return tool_executor_node(state, self._active_db, self.rag)
+        return tool_executor_node(state, db, self.rag)
 
     def query(self, user_question: str, chat_history: list | None = None) -> str:
         """DB 연결을 쿼리 수명주기 동안 유지하고, 완료 후 해제합니다."""
@@ -236,7 +238,7 @@ class SpeakNodeAgent:
         }
 
         with KuzuManager(db_path=self.db_path, config=self.config) as db:
-            self._active_db = db
+            self._local.active_db = db
             try:
                 final_state = self.graph.invoke(initial_state)
                 return final_state.get("final_answer", "응답을 생성할 수 없습니다.")
@@ -244,4 +246,4 @@ class SpeakNodeAgent:
                 logger.exception("❌ [Agent] 처리 중 오류")
                 return f"죄송합니다, 처리 중 오류가 발생했습니다: {e}"
             finally:
-                self._active_db = None
+                self._local.active_db = None

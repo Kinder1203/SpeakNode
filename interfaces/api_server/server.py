@@ -130,6 +130,11 @@ def _validate_audio_upload(upload: UploadFile) -> str:
         )
 
     size = _uploaded_file_size(upload)
+    if size < 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Unable to determine file size",
+        )
     if size > MAX_AUDIO_SIZE_BYTES:
         raise HTTPException(
             status_code=413,

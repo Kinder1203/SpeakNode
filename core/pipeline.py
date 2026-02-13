@@ -145,7 +145,15 @@ class SpeakNodeEngine:
 
             # --- Step 3: LLM 추출 ---
             logger.info("   Step 3: 핵심 정보(토픽/할일) 추출 중...")
-            analysis_data = self.extract(transcript_text)
+            try:
+                analysis_data = self.extract(transcript_text)
+            except Exception:
+                logger.exception("⚠️ [Pipeline] LLM 추출 실패 — 발화 데이터만 저장합니다.")
+                analysis_data = None
+
+            if not analysis_data:
+                logger.warning("⚠️ [Pipeline] LLM 추출 결과 없음 — 발화 데이터만 저장합니다.")
+                return {"topics": [], "decisions": [], "tasks": [], "people": []}
 
             # --- Step 4: 지식 그래프 적재 ---
             logger.info("   Step 4: 지식 그래프(Knowledge Graph) 구축...")

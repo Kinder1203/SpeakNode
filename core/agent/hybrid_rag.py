@@ -29,6 +29,10 @@ FORBIDDEN_CYPHER_TOKENS = (
     "REMOVE",
     "CALL",
     "COPY",
+    "LOAD",
+    "UNWIND",
+    "PROFILE",
+    "EXPLAIN",
 )
 
 

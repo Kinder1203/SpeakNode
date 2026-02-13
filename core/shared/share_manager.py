@@ -22,6 +22,9 @@ class ShareManager:
         """
         데이터를 시각화한 이미지 카드를 생성하고, 메타데이터에 원본 JSON을 숨김
         """
+        # 경로 순회 방어: 디렉토리 성분 제거
+        safe_filename = os.path.basename(filename) or "meeting_card.png"
+
         # 1. 캔버스 생성
         width, height = 800, 600
         img = Image.new('RGB', (width, height), color=(30, 30, 30))
@@ -77,7 +80,7 @@ class ShareManager:
         metadata.add_text("speaknode_data_zlib_b64", self._encode_payload(data))
 
         # 4. 저장
-        save_path = os.path.join(self.output_dir, filename)
+        save_path = os.path.join(self.output_dir, safe_filename)
         img.save(save_path, "PNG", pnginfo=metadata)
         logger.info("🖼️ [Share] 이미지 카드 생성 완료: %s", save_path)
         return save_path
