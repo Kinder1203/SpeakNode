@@ -84,7 +84,7 @@ class Transcriber:
             seg["speaker"] = best_speaker
         return segments
 
-    def transcribe(self, audio_path):
+    def transcribe(self, audio_path: str) -> list[dict] | None:
         """
         오디오 파일 경로를 받아 텍스트와 메타데이터 반환
         """

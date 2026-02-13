@@ -83,24 +83,34 @@ CREATE REL TABLE HAS_DECISION(FROM Meeting TO Decision);
 ```text
 SpeakNode/
 ├── core/
-│   ├── config.py
-│   ├── domain.py
-│   ├── pipeline.py
+│   ├── config.py            # 중앙 설정 + 채팅 유틸리티
+│   ├── domain.py            # Pydantic 도메인 모델
+│   ├── utils.py             # 공유 비즈니스 로직 (Task 상태 정규화)
+│   ├── embedding.py         # Embedding 모델 싱글턴 캐시
+│   ├── pipeline.py          # STT→Embed→LLM→DB 파이프라인
 │   ├── stt/transcriber.py
 │   ├── llm/extractor.py
 │   ├── db/
-│   │   ├── kuzu_manager.py
-│   │   └── check_db.py
+│   │   ├── kuzu_manager.py  # KuzuDB 통합 관리자 (유일한 kuzu 접근점)
+│   │   └── check_db.py      # DB 진단 스크립트
 │   ├── shared/share_manager.py
 │   └── agent/
-│       ├── agent.py
-│       ├── hybrid_rag.py
-│       └── tools/
+│       ├── agent.py          # LangGraph Agent (query-scope DB 수명주기)
+│       ├── hybrid_rag.py     # Hybrid RAG (Vector + Graph)
+│       └── tools/            # 데코레이터 기반 Tool Registry
 ├── interfaces/
 │   ├── streamlit_app/
 │   │   ├── app.py
 │   │   └── view_components.py
-│   └── api_server/server.py
+│   └── api_server/server.py  # FastAPI + CORS
+├── kotlin-client/             # Compose Desktop 클라이언트 (Phase 5.2)
+│   ├── build.gradle.kts
+│   ├── settings.gradle.kts
+│   └── src/main/kotlin/com/speaknode/client/
+│       ├── Main.kt
+│       ├── api/               # Ktor HTTP 클라이언트 + 모델
+│       ├── ui/                # Compose Material 3 UI
+│       └── viewmodel/         # StateFlow 기반 상태 관리
 ├── scripts/api_smoke_test.py
 ├── docs/api_examples.http
 └── requirements.txt
@@ -116,11 +126,22 @@ SpeakNode/
 - 그래프 import 보호(크기/요소 제한) 적용
 - 회의 스코프 키 기반 엔티티 충돌 방지 적용
 
-## 8. Roadmap Status
+## 8. Phase 5.2 Completion Criteria
+- CORS 미들웨어 적용 (환경변수 기반 origin 설정)
+- Compose Multiplatform Desktop 프로젝트 구축
+- Ktor 기반 API 클라이언트 전 엔드포인트 구현
+- Kotlinx Serialization Request/Response 모델 정의
+- Material 3 다크 테마 UI
+- 2-pane 레이아웃 (Sidebar + Content)
+- Meeting 분석/목록 화면
+- Agent 대화 화면
+- StateFlow 기반 반응형 상태 관리
+
+## 9. Roadmap Status
 - Phase 1 Foundation: Complete
 - Phase 2 Core Logic: Complete
 - Phase 3 Prototype UI: Complete
 - Phase 3.5 Vector Memory: Complete
 - Phase 4 Intelligent Agent: Complete
 - Phase 5.1 FastAPI Hardening: Complete
-- Phase 5.2 Kotlin Client: Planned
+- Phase 5.2 Kotlin Client: Complete

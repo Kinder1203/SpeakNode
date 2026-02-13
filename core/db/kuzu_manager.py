@@ -40,7 +40,7 @@ def extract_scope_from_value(value: str) -> str:
 
 
 class KuzuManager:
-    def __init__(self, db_path=None, config: SpeakNodeConfig = None):
+    def __init__(self, db_path: str | None = None, config: SpeakNodeConfig | None = None):
         cfg = config or SpeakNodeConfig()
         if db_path is None:
             db_path = cfg.get_chat_db_path()
@@ -53,8 +53,16 @@ class KuzuManager:
         self.db_path = db_path
         self.config = cfg
         self.db = kuzu.Database(db_path)
-        self.conn = kuzu.Connection(self.db)
-        self._initialize_schema()
+        try:
+            self.conn = kuzu.Connection(self.db)
+            self._initialize_schema()
+        except Exception:
+            # 연결/스키마 초기화 실패 시 DB 리소스 해제
+            try:
+                self.db.close()
+            except Exception:
+                pass
+            raise
         logger.debug("KuzuDB 연결 완료: %s", db_path)
 
     # --- Context Manager ---
@@ -118,7 +126,7 @@ class KuzuManager:
                     if "already exists" not in str(e).lower():
                         logger.warning("⚠️ 스키마 생성 중 예외 발생 (%s): %s", definition, e)
 
-    def ingest_transcript(self, segments: list, embeddings: list = None, meeting_id: str = None) -> int:
+    def ingest_transcript(self, segments: list[dict], embeddings: list[list[float]] | None = None, meeting_id: str | None = None) -> int:
         """
         STT 결과(전체 대화 내용)를 DB에 적재
         - segments: Transcriber 결과 리스트
@@ -429,7 +437,7 @@ class KuzuManager:
                 {"mid": item.get("meeting_id", ""), "desc": item.get("decision", "")},
             )
 
-    def ingest_data(self, analysis_result, meeting_id: str = None):
+    def ingest_data(self, analysis_result: dict, meeting_id: str | None = None) -> None:
         """
         LLM 분석 결과(요약, 할일 등) 적재.
         analysis_result: dict 또는 AnalysisResult 모델 모두 허용.
@@ -541,13 +549,13 @@ class KuzuManager:
     # 📖 Graph RAG — 구조적 읽기/검색
     # ================================================================
 
-    def execute_cypher(self, query: str, params: dict = None) -> list:
+    def execute_cypher(self, query: str, params: dict | None = None) -> list[tuple]:
         """
         범용 Cypher 쿼리 실행. Agent가 직접 쿼리를 생성하여 호출할 수 있음.
         결과를 list[tuple]로 반환.
         """
         result = self.conn.execute(query, params or {})
-        rows = []
+        rows: list[tuple] = []
         while result.has_next():
             rows.append(result.get_next())
         return rows
@@ -773,7 +781,7 @@ class KuzuManager:
     # 🔍 Vector RAG — 의미 기반 검색
     # ================================================================
 
-    def search_similar_utterances(self, query_vector: list, top_k: int = 5) -> list[dict]:
+    def search_similar_utterances(self, query_vector: list[float], top_k: int = 5) -> list[dict]:
         """
         코사인 유사도 기반으로 가장 관련 있는 Utterance를 검색.
         DB에 벡터 인덱스가 없으면 순차 스캔으로 fallback.

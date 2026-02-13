@@ -18,7 +18,7 @@ class ShareManager:
             os.makedirs(output_dir)
         self.output_dir = output_dir
 
-    def create_card(self, data, filename="meeting_card.png"):
+    def create_card(self, data: dict, filename: str = "meeting_card.png") -> str:
         """
         데이터를 시각화한 이미지 카드를 생성하고, 메타데이터에 원본 JSON을 숨김
         """
@@ -82,7 +82,7 @@ class ShareManager:
         logger.info("🖼️ [Share] 이미지 카드 생성 완료: %s", save_path)
         return save_path
 
-    def load_data_from_image(self, image_path):
+    def load_data_from_image(self, image_path: str) -> dict | None:
         """이미지 안에 숨겨진 SpeakNode 데이터를 추출"""
         try:
             img = Image.open(image_path)

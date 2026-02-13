@@ -43,8 +43,8 @@ def set_korean_font():
         else:
             plt.rcParams["font.family"] = "Malgun Gothic"
         plt.rcParams["axes.unicode_minus"] = False
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("한글 폰트 설정 건너뜀: %s", e)
 
 def render_header():
     st.title("🧠 SpeakNode: Intelligent Meeting Analyst")
@@ -371,13 +371,17 @@ def render_import_card_ui(share_manager):
     import_file = st.file_uploader("SpeakNode 그래프 이미지(PNG)를 업로드하세요", type=["png"], key="import_card")
     
     if import_file:
-        temp_path = f"temp_import_{import_file.name}"
-        with open(temp_path, "wb") as f:
-            f.write(import_file.getbuffer())
-        
-        data = share_manager.load_data_from_image(temp_path)
-        if os.path.exists(temp_path): os.remove(temp_path)
-            
+        # 안전한 임시 파일명 — path traversal 방지
+        safe_name = os.path.basename(import_file.name)
+        temp_path = f"temp_import_{safe_name}"
+        try:
+            with open(temp_path, "wb") as f:
+                f.write(import_file.getbuffer())
+            data = share_manager.load_data_from_image(temp_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
         if data:
             st.success("✅ 이미지에서 데이터를 찾았습니다!")
             return data

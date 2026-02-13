@@ -183,7 +183,7 @@ class SpeakNodeAgent:
         response = agent.query("이번 회의에서 결정된 사항은?")
     """
 
-    def __init__(self, db_path: str, config: SpeakNodeConfig = None):
+    def __init__(self, db_path: str, config: SpeakNodeConfig | None = None):
         self.config = config or SpeakNodeConfig()
         self.db_path = db_path
 
@@ -221,7 +221,7 @@ class SpeakNodeAgent:
             raise RuntimeError("Agent DB가 초기화되지 않았습니다. query() 메서드를 통해 호출하세요.")
         return tool_executor_node(state, self._active_db, self.rag)
 
-    def query(self, user_question: str, chat_history: list = None) -> str:
+    def query(self, user_question: str, chat_history: list | None = None) -> str:
         """DB 연결을 쿼리 수명주기 동안 유지하고, 완료 후 해제합니다."""
         messages = chat_history or []
         messages.append(HumanMessage(content=user_question))

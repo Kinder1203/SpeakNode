@@ -8,7 +8,7 @@ SpeakNode Tool Registry
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Any
 
 
@@ -62,6 +62,8 @@ class ToolRegistry:
         try:
             return tool.handler(args, db, rag)
         except Exception as e:
+            import logging as _log
+            _log.getLogger(__name__).exception("Tool '%s' 실행 중 오류", name)
             return f"도구 실행 오류 ({name}): {e}"
 
     def get_descriptions(self) -> str:

@@ -10,6 +10,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -183,9 +184,18 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="SpeakNode API",
-    version="2.1.0",
+    version="5.2.0",
     lifespan=lifespan,
     description="Local meeting analysis API (STT + Graph DB + Agent)",
+)
+
+# --- CORS --- Kotlin/외부 클라이언트 연동 지원
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ.get("SPEAKNODE_CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

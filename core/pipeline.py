@@ -161,7 +161,7 @@ class SpeakNodeEngine:
     # 🤖 Agent 생성 — Phase 4
     # ================================================================
 
-    def create_agent(self, db_path: str = None):
+    def create_agent(self, db_path: str | None = None) -> "SpeakNodeAgent":
         """
         해당 DB에 연결된 AI Agent 인스턴스를 반환합니다.
         Whisper/Embedding 모델을 로딩하지 않고 Agent만 생성합니다.

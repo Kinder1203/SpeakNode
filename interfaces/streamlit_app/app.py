@@ -1,12 +1,16 @@
-import streamlit as st
+import logging
 import os
 import shutil
 import time
 
+import streamlit as st
+
 st.set_page_config(page_title="SpeakNode Dashboard", layout="wide")
 
-import matplotlib
+import matplotlib  # noqa: E402 — set_page_config 이후 임포트 필요
 matplotlib.use("Agg")
+
+logger = logging.getLogger("speaknode.app")
 
 import view_components as vc
 from core.pipeline import SpeakNodeEngine
@@ -24,7 +28,7 @@ share_mgr = ShareManager(output_dir=SHARED_CARDS_DIR)
 
 @st.cache_resource
 def get_engine():
-    print("🏗️ [App] Initializing SpeakNodeEngine...")
+    logger.info("🏗️ SpeakNodeEngine 초기화 중...")
     return SpeakNodeEngine()
 
 if 'analysis_result' not in st.session_state:
@@ -119,14 +123,14 @@ if uploaded_audio:
                     st.warning("분석 결과가 없습니다.")
             except Exception as e:
                 st.error(f"에러 발생: {e}")
-                print(f"❌ Error detail: {e}")
+                logger.error("분석 중 오류 발생: %s", e, exc_info=True)
                 status.update(label="❌ 실패", state="error")
         
         if os.path.exists(temp_audio):
             try:
                 os.remove(temp_audio)
             except OSError as e:
-                print(f"⚠️ 임시 파일 삭제 실패: {e}")
+                logger.warning("임시 파일 삭제 실패: %s", e)
 
 elif not st.session_state['analysis_result']: 
     st.info("회의 파일을 업로드하거나, 기존 그래프 이미지를 통해 복원하세요.")
@@ -144,20 +148,16 @@ elif not st.session_state['analysis_result']:
 
         st.session_state['analysis_result'] = restored_analysis
         
-        db_mgr = None
         try:
-            db_mgr = KuzuManager(current_db_path, config=_config)
-            if restored_graph_dump:
-                db_mgr.restore_graph_dump(restored_graph_dump)
-                st.success("✅ 전체 그래프 데이터 복원 및 DB 동기화 완료!")
-            else:
-                db_mgr.ingest_data(restored_analysis)
-                st.success("✅ 분석 데이터 복원 및 DB 동기화 완료!")
+            with KuzuManager(current_db_path, config=_config) as db_mgr:
+                if restored_graph_dump:
+                    db_mgr.restore_graph_dump(restored_graph_dump)
+                    st.success("✅ 전체 그래프 데이터 복원 및 DB 동기화 완료!")
+                else:
+                    db_mgr.ingest_data(restored_analysis)
+                    st.success("✅ 분석 데이터 복원 및 DB 동기화 완료!")
         except Exception as e:
             st.error(f"❌ DB 복원 중 오류: {e}")
-        finally:
-            if db_mgr:
-                db_mgr.close()
             
         time.sleep(0.5)
         st.rerun()
