@@ -26,6 +26,7 @@ from langgraph.graph import StateGraph, END
 from core.config import SpeakNodeConfig
 from core.db.kuzu_manager import KuzuManager
 from core.agent.hybrid_rag import HybridRAG
+from core.utils import truncate_text
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,10 @@ def router_node(state: AgentState, llm: ChatOllama) -> AgentState:
     """사용자 질문을 분석하여 적절한 Tool을 선택합니다."""
     user_messages = state["messages"]
 
+    # Context Window 보호: 대화 히스토리가 길면 최근 것만 사용
+    MAX_ROUTER_MESSAGES = 10
+    recent_messages = user_messages[-MAX_ROUTER_MESSAGES:] if len(user_messages) > MAX_ROUTER_MESSAGES else user_messages
+
     # Tool 설명을 Registry에서 자동 생성
     tool_descriptions = tool_registry.get_descriptions()
 
@@ -86,7 +91,7 @@ Rules:
 - For general greetings or questions not related to meeting data: use "direct_answer"
 """
 
-    messages = [SystemMessage(content=router_prompt)] + user_messages
+    messages = [SystemMessage(content=router_prompt)] + recent_messages
     response = llm.invoke(messages)
 
     try:
@@ -126,9 +131,20 @@ def synthesizer_node(state: AgentState, llm: ChatOllama) -> AgentState:
     tool_name = state.get("tool_name", "")
     tool_result = state.get("tool_result", "")
 
+    # Context Window 보호: 검색 결과가 너무 길면 잘라냄
+    safe_tool_result = truncate_text(tool_result, max_tokens=20_000)
+
+    # 대화 히스토리도 최근 메시지만 유지 (context window 보호)
+    all_messages = state.get("messages", [])
+    MAX_HISTORY_MESSAGES = 20
+    recent_messages = all_messages[-MAX_HISTORY_MESSAGES:] if len(all_messages) > MAX_HISTORY_MESSAGES else all_messages
+
     if tool_name == "draft_email":
         try:
             email_data = json.loads(tool_result)
+            email_context = truncate_text(
+                email_data.get('context', '(데이터 없음)'), max_tokens=15_000
+            )
             synth_prompt = f"""You are a professional email writer.
 Based on the meeting data below, draft a business email in Korean.
 
@@ -136,7 +152,7 @@ Based on the meeting data below, draft a business email in Korean.
 제목: {email_data.get('subject', '회의 결과')}
 
 회의 데이터:
-{email_data.get('context', '(데이터 없음)')}
+{email_context}
 
 Write a clear, professional email in Korean. Include:
 - 인사말
@@ -146,14 +162,14 @@ Write a clear, professional email in Korean. Include:
 - 마무리 인사
 """
         except (json.JSONDecodeError, TypeError):
-            synth_prompt = f"이메일 초안을 작성해주세요. 데이터: {tool_result}"
+            synth_prompt = f"이메일 초안을 작성해주세요. 데이터: {safe_tool_result}"
         messages = [SystemMessage(content=synth_prompt)]
 
     elif tool_name == "direct_answer":
         synth_prompt = """You are a helpful meeting analysis assistant called SpeakNode.
 Answer the user's question naturally in Korean.
 If the question is about meeting data, let them know they can ask specific questions about topics, tasks, decisions, or people."""
-        messages = [SystemMessage(content=synth_prompt)] + state["messages"]
+        messages = [SystemMessage(content=synth_prompt)] + recent_messages
 
     else:
         synth_prompt = f"""You are a meeting analysis assistant called SpeakNode.
@@ -161,9 +177,9 @@ Based on the search results below, provide a clear and helpful answer to the use
 Cite specific data from the results. If results are empty, let the user know.
 
 검색 결과:
-{tool_result}
+{safe_tool_result}
 """
-        messages = [SystemMessage(content=synth_prompt)] + state["messages"]
+        messages = [SystemMessage(content=synth_prompt)] + recent_messages
 
     response = llm.invoke(messages)
     state["final_answer"] = response.content

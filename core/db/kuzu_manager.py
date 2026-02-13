@@ -1,5 +1,6 @@
 import logging
 import os
+from contextlib import contextmanager
 
 import kuzu
 
@@ -89,6 +90,25 @@ class KuzuManager:
         except Exception as e:
             logger.warning("⚠️ DB 해제 중 오류 발생: %s", e)
 
+    @contextmanager
+    def _transaction(self):
+        """
+        수동 트랜잭션 컨텍스트 매니저.
+        블록 내 모든 execute()를 하나의 트랜잭션으로 묶어
+        중간 실패 시 ROLLBACK으로 원자성(All-or-Nothing)을 보장합니다.
+        """
+        self.conn.execute("BEGIN TRANSACTION")
+        try:
+            yield
+            self.conn.execute("COMMIT")
+        except BaseException:
+            try:
+                self.conn.execute("ROLLBACK")
+                logger.info("↩️ [DB] 트랜잭션 ROLLBACK 완료 — 변경사항이 취소되었습니다.")
+            except Exception as rb_err:
+                logger.error("❌ [DB] ROLLBACK 실패: %s", rb_err)
+            raise
+
     def _initialize_schema(self):
         """
         스키마 정의 (Graph + Vector)
@@ -133,61 +153,68 @@ class KuzuManager:
         - embeddings: 각 세그먼트에 대응하는 벡터 리스트 (Optional)
         - meeting_id: 회의 ID (있으면 Meeting-CONTAINS 연결)
         반환값: 성공적으로 적재된 세그먼트 수
+        
+        트랜잭션으로 감싸여 있어 중간 실패 시 자동 롤백됩니다.
         """
         logger.info("📥 [DB] 대화 내용 적재 시작 (총 %d 문장)...", len(segments))
         dim = self.config.embedding_dim
         previous_id = None
         ingested_count = 0
         
-        # --- 임베딩 싱크 검증 ---
+        # --- 임베딩 싱크 검증 (트랜잭션 진입 전 유효성 검사) ---
         if embeddings is not None and len(embeddings) != len(segments):
-            logger.warning(
-                "⚠️ [DB] 임베딩 길이 불일치! segments=%d, embeddings=%d. "
-                "부족분은 제로벡터로 채워집니다 (Vector RAG 품질 저하 가능).",
-                len(segments), len(embeddings),
+            raise ValueError(
+                f"임베딩 길이 불일치: segments={len(segments)}, embeddings={len(embeddings)}. "
+                "모든 세그먼트에 대응하는 임베딩이 필요합니다."
             )
         
         try:
-            for i, seg in enumerate(segments):
-                # meeting_id + index 기반 식별자로 타임스탬프 충돌을 방지합니다.
-                start = float(seg.get("start", 0.0))
-                end = float(seg.get("end", 0.0))
-                text = str(seg.get("text", "")).strip()
-                scope = meeting_id or "global"
-                u_id = f"u_{scope}_{i:06d}_{int(start * 1000):010d}"
-                
-                # 임베딩이 있으면 넣고, 없으면 0으로 채움
-                vector = embeddings[i] if embeddings and i < len(embeddings) else [0.0] * dim
-                
-                self.conn.execute(
-                    "MERGE (u:Utterance {id: $id}) ON CREATE SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
-                    {"id": u_id, "text": text, "stime": start, "etime": end, "vec": vector}
-                )
-                
-                speaker_name = seg.get('speaker', 'Unknown')
-                self.conn.execute(
-                    "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
-                    {"name": speaker_name}
-                )
-                self.conn.execute(
-                    "MATCH (p:Person {name: $name}), (u:Utterance {id: $id}) MERGE (p)-[:SPOKE]->(u)",
-                    {"name": speaker_name, "id": u_id}
-                )
-                
-                if previous_id:
+            with self._transaction():
+                for i, seg in enumerate(segments):
+                    # meeting_id + index 기반 식별자로 타임스탬프 충돌을 방지합니다.
+                    start = float(seg.get("start", 0.0))
+                    end = float(seg.get("end", 0.0))
+                    text = str(seg.get("text", "")).strip()
+                    scope = meeting_id or "global"
+                    u_id = f"u_{scope}_{i:06d}_{int(start * 1000):010d}"
+                    
+                    # 임베딩이 반드시 있어야 함 (없으면 제로벡터 삽입 방지)
+                    if not embeddings or i >= len(embeddings):
+                        raise ValueError(
+                            f"세그먼트 {i}에 대한 임베딩이 없습니다. "
+                            "임베딩 없이는 적재할 수 없습니다."
+                        )
+                    vector = embeddings[i]
+                    
                     self.conn.execute(
-                        "MATCH (prev:Utterance {id: $pid}), (curr:Utterance {id: $cid}) MERGE (prev)-[:NEXT]->(curr)",
-                        {"pid": previous_id, "cid": u_id}
+                        "MERGE (u:Utterance {id: $id}) ON CREATE SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
+                        {"id": u_id, "text": text, "stime": start, "etime": end, "vec": vector}
                     )
-                
-                if meeting_id:
+                    
+                    speaker_name = seg.get('speaker', 'Unknown')
                     self.conn.execute(
-                        "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) MERGE (m)-[:CONTAINS]->(u)",
-                        {"mid": meeting_id, "uid": u_id}
+                        "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
+                        {"name": speaker_name}
                     )
-                
-                previous_id = u_id
-                ingested_count += 1
+                    self.conn.execute(
+                        "MATCH (p:Person {name: $name}), (u:Utterance {id: $id}) MERGE (p)-[:SPOKE]->(u)",
+                        {"name": speaker_name, "id": u_id}
+                    )
+                    
+                    if previous_id:
+                        self.conn.execute(
+                            "MATCH (prev:Utterance {id: $pid}), (curr:Utterance {id: $cid}) MERGE (prev)-[:NEXT]->(curr)",
+                            {"pid": previous_id, "cid": u_id}
+                        )
+                    
+                    if meeting_id:
+                        self.conn.execute(
+                            "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) MERGE (m)-[:CONTAINS]->(u)",
+                            {"mid": meeting_id, "uid": u_id}
+                        )
+                    
+                    previous_id = u_id
+                    ingested_count += 1
                 
             logger.info("✅ [DB] 대화 흐름(NEXT) 및 화자(SPOKE) 연결 완료. (%d/%d건 적재)", ingested_count, len(segments))
 
@@ -299,230 +326,251 @@ class KuzuManager:
         return dump
 
     def restore_graph_dump(self, dump: dict) -> None:
-        """export_graph_dump 결과를 DB에 복원."""
+        """
+        export_graph_dump 결과를 DB에 복원.
+        
+        트랜잭션으로 감싸여 있어 중간 실패 시 자동 롤백됩니다.
+        (All-or-Nothing: 모든 노드/엣지가 복원되거나, 하나도 복원되지 않음)
+        """
         if not isinstance(dump, dict):
             raise ValueError("graph dump must be a dict")
 
         nodes = dump.get("nodes", {})
         edges = dump.get("edges", {})
 
-        # Nodes 복원
-        for item in nodes.get("meetings", []):
-            meeting_id = item.get("id", "")
-            if not meeting_id:
-                continue
-            self.conn.execute(
-                "MERGE (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
-                {
-                    "id": meeting_id,
-                    "title": item.get("title", ""),
-                    "date": item.get("date", ""),
-                    "src": item.get("source_file", ""),
-                },
-            )
-        for item in nodes.get("people", []):
-            person_name = item.get("name", "")
-            if not person_name:
-                continue
-            self.conn.execute(
-                "MERGE (p:Person {name: $name}) SET p.role = $role",
-                {"name": person_name, "role": item.get("role", "Member")},
-            )
-        for item in nodes.get("topics", []):
-            title = item.get("title", "")
-            if not title:
-                continue
-            self.conn.execute(
-                "MERGE (t:Topic {title: $title}) SET t.summary = $summary",
-                {"title": title, "summary": item.get("summary", "")},
-            )
-        for item in nodes.get("tasks", []):
-            desc = item.get("description", "")
-            if not desc:
-                continue
-            self.conn.execute(
-                "MERGE (t:Task {description: $desc}) SET t.deadline = $due, t.status = $status",
-                {
-                    "desc": desc,
-                    "due": item.get("deadline", "TBD"),
-                    "status": normalize_task_status(item.get("status", "pending")),
-                },
-            )
-        for item in nodes.get("decisions", []):
-            desc = item.get("description", "")
-            if not desc:
-                continue
-            self.conn.execute(
-                "MERGE (d:Decision {description: $desc})",
-                {"desc": desc},
-            )
-        for item in nodes.get("utterances", []):
-            utterance_id = item.get("id", "")
-            if not utterance_id:
-                continue
-            self.conn.execute(
-                "MERGE (u:Utterance {id: $id}) "
-                "SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
-                {
-                    "id": utterance_id,
-                    "text": item.get("text", ""),
-                    "stime": float(item.get("start", 0.0)),
-                    "etime": float(item.get("end", 0.0)),
-                    "vec": item.get("embedding", [0.0] * self.config.embedding_dim),
-                },
-            )
+        has_embeddings_missing = False
 
-        # Edges 복원
-        for item in edges.get("proposed", []):
-            if not item.get("person") or not item.get("topic"):
-                continue
-            self.conn.execute(
-                "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
-                {"name": item.get("person", ""), "title": item.get("topic", "")},
-            )
-        for item in edges.get("assigned_to", []):
-            if not item.get("person") or not item.get("task"):
-                continue
-            self.conn.execute(
-                "MATCH (p:Person {name: $name}), (t:Task {description: $task}) MERGE (p)-[:ASSIGNED_TO]->(t)",
-                {"name": item.get("person", ""), "task": item.get("task", "")},
-            )
-        for item in edges.get("resulted_in", []):
-            if not item.get("topic") or not item.get("decision"):
-                continue
-            self.conn.execute(
-                "MATCH (t:Topic {title: $title}), (d:Decision {description: $desc}) MERGE (t)-[:RESULTED_IN]->(d)",
-                {"title": item.get("topic", ""), "desc": item.get("decision", "")},
-            )
-        for item in edges.get("spoke", []):
-            if not item.get("person") or not item.get("utterance_id"):
-                continue
-            self.conn.execute(
-                "MATCH (p:Person {name: $name}), (u:Utterance {id: $uid}) MERGE (p)-[:SPOKE]->(u)",
-                {"name": item.get("person", ""), "uid": item.get("utterance_id", "")},
-            )
-        for item in edges.get("next", []):
-            if not item.get("from_utterance_id") or not item.get("to_utterance_id"):
-                continue
-            self.conn.execute(
-                "MATCH (a:Utterance {id: $a}), (b:Utterance {id: $b}) MERGE (a)-[:NEXT]->(b)",
-                {"a": item.get("from_utterance_id", ""), "b": item.get("to_utterance_id", "")},
-            )
-        for item in edges.get("discussed", []):
-            if not item.get("meeting_id") or not item.get("topic"):
-                continue
-            self.conn.execute(
-                "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
-                {"mid": item.get("meeting_id", ""), "title": item.get("topic", "")},
-            )
-        for item in edges.get("contains", []):
-            if not item.get("meeting_id") or not item.get("utterance_id"):
-                continue
-            self.conn.execute(
-                "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) MERGE (m)-[:CONTAINS]->(u)",
-                {"mid": item.get("meeting_id", ""), "uid": item.get("utterance_id", "")},
-            )
-        for item in edges.get("has_task", []):
-            if not item.get("meeting_id") or not item.get("task"):
-                continue
-            self.conn.execute(
-                "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task}) MERGE (m)-[:HAS_TASK]->(t)",
-                {"mid": item.get("meeting_id", ""), "task": item.get("task", "")},
-            )
-        for item in edges.get("has_decision", []):
-            if not item.get("meeting_id") or not item.get("decision"):
-                continue
-            self.conn.execute(
-                "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $desc}) MERGE (m)-[:HAS_DECISION]->(d)",
-                {"mid": item.get("meeting_id", ""), "desc": item.get("decision", "")},
+        with self._transaction():
+            # Nodes 복원
+            for item in nodes.get("meetings", []):
+                meeting_id = item.get("id", "")
+                if not meeting_id:
+                    continue
+                self.conn.execute(
+                    "MERGE (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
+                    {
+                        "id": meeting_id,
+                        "title": item.get("title", ""),
+                        "date": item.get("date", ""),
+                        "src": item.get("source_file", ""),
+                    },
+                )
+            for item in nodes.get("people", []):
+                person_name = item.get("name", "")
+                if not person_name:
+                    continue
+                self.conn.execute(
+                    "MERGE (p:Person {name: $name}) SET p.role = $role",
+                    {"name": person_name, "role": item.get("role", "Member")},
+                )
+            for item in nodes.get("topics", []):
+                title = item.get("title", "")
+                if not title:
+                    continue
+                self.conn.execute(
+                    "MERGE (t:Topic {title: $title}) SET t.summary = $summary",
+                    {"title": title, "summary": item.get("summary", "")},
+                )
+            for item in nodes.get("tasks", []):
+                task_desc = item.get("description", "")
+                if not task_desc:
+                    continue
+                self.conn.execute(
+                    "MERGE (t:Task {description: $task_desc}) SET t.deadline = $due, t.status = $status",
+                    {
+                        "task_desc": task_desc,
+                        "due": item.get("deadline", "TBD"),
+                        "status": normalize_task_status(item.get("status", "pending")),
+                    },
+                )
+            for item in nodes.get("decisions", []):
+                decision_desc = item.get("description", "")
+                if not decision_desc:
+                    continue
+                self.conn.execute(
+                    "MERGE (d:Decision {description: $decision_desc})",
+                    {"decision_desc": decision_desc},
+                )
+            for item in nodes.get("utterances", []):
+                utterance_id = item.get("id", "")
+                if not utterance_id:
+                    continue
+                embedding = item.get("embedding")
+                if not embedding:
+                    has_embeddings_missing = True
+                    embedding = [0.0] * self.config.embedding_dim
+                self.conn.execute(
+                    "MERGE (u:Utterance {id: $id}) "
+                    "SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
+                    {
+                        "id": utterance_id,
+                        "text": item.get("text", ""),
+                        "stime": float(item.get("start", 0.0)),
+                        "etime": float(item.get("end", 0.0)),
+                        "vec": embedding,
+                    },
+                )
+
+            # Edges 복원
+            for item in edges.get("proposed", []):
+                if not item.get("person") or not item.get("topic"):
+                    continue
+                self.conn.execute(
+                    "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
+                    {"name": item.get("person", ""), "title": item.get("topic", "")},
+                )
+            for item in edges.get("assigned_to", []):
+                if not item.get("person") or not item.get("task"):
+                    continue
+                self.conn.execute(
+                    "MATCH (p:Person {name: $name}), (t:Task {description: $task}) MERGE (p)-[:ASSIGNED_TO]->(t)",
+                    {"name": item.get("person", ""), "task": item.get("task", "")},
+                )
+            for item in edges.get("resulted_in", []):
+                if not item.get("topic") or not item.get("decision"):
+                    continue
+                self.conn.execute(
+                    "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) MERGE (t)-[:RESULTED_IN]->(d)",
+                    {"title": item.get("topic", ""), "decision_desc": item.get("decision", "")},
+                )
+            for item in edges.get("spoke", []):
+                if not item.get("person") or not item.get("utterance_id"):
+                    continue
+                self.conn.execute(
+                    "MATCH (p:Person {name: $name}), (u:Utterance {id: $uid}) MERGE (p)-[:SPOKE]->(u)",
+                    {"name": item.get("person", ""), "uid": item.get("utterance_id", "")},
+                )
+            for item in edges.get("next", []):
+                if not item.get("from_utterance_id") or not item.get("to_utterance_id"):
+                    continue
+                self.conn.execute(
+                    "MATCH (a:Utterance {id: $a}), (b:Utterance {id: $b}) MERGE (a)-[:NEXT]->(b)",
+                    {"a": item.get("from_utterance_id", ""), "b": item.get("to_utterance_id", "")},
+                )
+            for item in edges.get("discussed", []):
+                if not item.get("meeting_id") or not item.get("topic"):
+                    continue
+                self.conn.execute(
+                    "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
+                    {"mid": item.get("meeting_id", ""), "title": item.get("topic", "")},
+                )
+            for item in edges.get("contains", []):
+                if not item.get("meeting_id") or not item.get("utterance_id"):
+                    continue
+                self.conn.execute(
+                    "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) MERGE (m)-[:CONTAINS]->(u)",
+                    {"mid": item.get("meeting_id", ""), "uid": item.get("utterance_id", "")},
+                )
+            for item in edges.get("has_task", []):
+                if not item.get("meeting_id") or not item.get("task"):
+                    continue
+                self.conn.execute(
+                    "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task}) MERGE (m)-[:HAS_TASK]->(t)",
+                    {"mid": item.get("meeting_id", ""), "task": item.get("task", "")},
+                )
+            for item in edges.get("has_decision", []):
+                if not item.get("meeting_id") or not item.get("decision"):
+                    continue
+                self.conn.execute(
+                    "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) MERGE (m)-[:HAS_DECISION]->(d)",
+                    {"mid": item.get("meeting_id", ""), "decision_desc": item.get("decision", "")},
+                )
+
+        if has_embeddings_missing:
+            logger.warning(
+                "⚠️ [DB] 일부 Utterance에 임베딩이 없어 제로벡터로 복원되었습니다. "
+                "벡터 검색 결과가 제한될 수 있습니다."
             )
 
     def ingest_data(self, analysis_result: dict, meeting_id: str | None = None) -> None:
         """
         LLM 분석 결과(요약, 할일 등) 적재.
         analysis_result: dict 또는 AnalysisResult 모델 모두 허용.
+        
+        트랜잭션으로 감싸여 있어 중간 실패 시 자동 롤백됩니다.
         """
         # AnalysisResult Pydantic 모델 ↔ dict 역호환
         if hasattr(analysis_result, "to_dict"):
             analysis_result = analysis_result.to_dict()
         try:
-            topic_keys_by_plain: dict[str, str] = {}
+            with self._transaction():
+                topic_keys_by_plain: dict[str, str] = {}
 
-            # 1. Person 노드 (people 리스트가 있다면)
-            for p in analysis_result.get("people", []):
-                self.conn.execute(
-                    "MERGE (p:Person {name: $name}) ON CREATE SET p.role = $role", 
-                    {"name": p['name'], "role": p.get('role', 'Member')}
-                )
-
-            # 2. Topic 노드 및 관계
-            for t in analysis_result.get("topics", []):
-                plain_title = str(t.get("title", "")).strip()
-                scoped_title = build_scoped_value(meeting_id, plain_title)
-                if not scoped_title:
-                    continue
-                topic_keys_by_plain[plain_title] = scoped_title
-                self.conn.execute(
-                    "MERGE (t:Topic {title: $title}) ON CREATE SET t.summary = $summary",
-                    {"title": scoped_title, "summary": t.get('summary', '')}
-                )
-                if t.get('proposer') and t['proposer'] != 'Unknown':
+                # 1. Person 노드 (people 리스트가 있다면)
+                for p in analysis_result.get("people", []):
                     self.conn.execute(
-                        "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
-                        {"name": t['proposer'], "title": scoped_title}
-                    )
-                # Meeting ↔ Topic 연결 (DISCUSSED)
-                if meeting_id:
-                    self.conn.execute(
-                        "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
-                        {"mid": meeting_id, "title": scoped_title}
+                        "MERGE (p:Person {name: $name}) ON CREATE SET p.role = $role", 
+                        {"name": p['name'], "role": p.get('role', 'Member')}
                     )
 
-            # 3. Task 노드 및 관계
-            for task in analysis_result.get("tasks", []):
-                desc_text = str(task.get('description', '')).strip() or "No Description"
-                scoped_desc = build_scoped_value(meeting_id, desc_text)
-                status = normalize_task_status(task.get("status", "pending"))
-                self.conn.execute(
-                    "MERGE (t:Task {description: $task_desc}) "
-                    "ON CREATE SET t.deadline = $due, t.status = $status",
-                    {"task_desc": scoped_desc, "due": task.get('deadline', 'TBD'), "status": status}
-                )
-                if task.get('assignee') and task['assignee'] != 'Unassigned':
+                # 2. Topic 노드 및 관계
+                for t in analysis_result.get("topics", []):
+                    plain_title = str(t.get("title", "")).strip()
+                    scoped_title = build_scoped_value(meeting_id, plain_title)
+                    if not scoped_title:
+                        continue
+                    topic_keys_by_plain[plain_title] = scoped_title
                     self.conn.execute(
-                        "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
-                        {"name": task['assignee']},
+                        "MERGE (t:Topic {title: $title}) ON CREATE SET t.summary = $summary",
+                        {"title": scoped_title, "summary": t.get('summary', '')}
                     )
-                    self.conn.execute(
-                        "MATCH (p:Person {name: $name}), (t:Task {description: $task_desc}) MERGE (p)-[:ASSIGNED_TO]->(t)",
-                        {"name": task['assignee'], "task_desc": scoped_desc}
-                    )
-                if meeting_id:
-                    self.conn.execute(
-                        "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task_desc}) MERGE (m)-[:HAS_TASK]->(t)",
-                        {"mid": meeting_id, "task_desc": scoped_desc},
-                    )
+                    if t.get('proposer') and t['proposer'] != 'Unknown':
+                        self.conn.execute(
+                            "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
+                            {"name": t['proposer'], "title": scoped_title}
+                        )
+                    # Meeting ↔ Topic 연결 (DISCUSSED)
+                    if meeting_id:
+                        self.conn.execute(
+                            "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
+                            {"mid": meeting_id, "title": scoped_title}
+                        )
 
-            # 4. Decision 노드 및 관계
-            for d in analysis_result.get("decisions", []):
-                desc_text = str(d.get('description', '')).strip() or "No Description"
-                scoped_desc = build_scoped_value(meeting_id, desc_text)
-                self.conn.execute("MERGE (d:Decision {description: $decision_desc})", {"decision_desc": scoped_desc})
-                if meeting_id:
+                # 3. Task 노드 및 관계
+                for task in analysis_result.get("tasks", []):
+                    desc_text = str(task.get('description', '')).strip() or "No Description"
+                    scoped_desc = build_scoped_value(meeting_id, desc_text)
+                    status = normalize_task_status(task.get("status", "pending"))
                     self.conn.execute(
-                        "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) MERGE (m)-[:HAS_DECISION]->(d)",
-                        {"mid": meeting_id, "decision_desc": scoped_desc},
+                        "MERGE (t:Task {description: $task_desc}) "
+                        "ON CREATE SET t.deadline = $due, t.status = $status",
+                        {"task_desc": scoped_desc, "due": task.get('deadline', 'TBD'), "status": status}
                     )
-                
-                if d.get('related_topic'):
-                    plain_related_topic = str(d.get("related_topic", "")).strip()
-                    resolved_topic_key = topic_keys_by_plain.get(plain_related_topic)
-                    if resolved_topic_key is None:
-                        resolved_topic_key = build_scoped_value(meeting_id, plain_related_topic)
-                    self.conn.execute(
-                        "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) MERGE (t)-[:RESULTED_IN]->(d)",
-                        {"title": resolved_topic_key, "decision_desc": scoped_desc}
-                    )
+                    if task.get('assignee') and task['assignee'] != 'Unassigned':
+                        self.conn.execute(
+                            "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
+                            {"name": task['assignee']},
+                        )
+                        self.conn.execute(
+                            "MATCH (p:Person {name: $name}), (t:Task {description: $task_desc}) MERGE (p)-[:ASSIGNED_TO]->(t)",
+                            {"name": task['assignee'], "task_desc": scoped_desc}
+                        )
+                    if meeting_id:
+                        self.conn.execute(
+                            "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task_desc}) MERGE (m)-[:HAS_TASK]->(t)",
+                            {"mid": meeting_id, "task_desc": scoped_desc},
+                        )
+
+                # 4. Decision 노드 및 관계
+                for d in analysis_result.get("decisions", []):
+                    desc_text = str(d.get('description', '')).strip() or "No Description"
+                    scoped_desc = build_scoped_value(meeting_id, desc_text)
+                    self.conn.execute("MERGE (d:Decision {description: $decision_desc})", {"decision_desc": scoped_desc})
+                    if meeting_id:
+                        self.conn.execute(
+                            "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) MERGE (m)-[:HAS_DECISION]->(d)",
+                            {"mid": meeting_id, "decision_desc": scoped_desc},
+                        )
+                    
+                    if d.get('related_topic'):
+                        plain_related_topic = str(d.get("related_topic", "")).strip()
+                        resolved_topic_key = topic_keys_by_plain.get(plain_related_topic)
+                        if resolved_topic_key is None:
+                            resolved_topic_key = build_scoped_value(meeting_id, plain_related_topic)
+                        self.conn.execute(
+                            "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) MERGE (t)-[:RESULTED_IN]->(d)",
+                            {"title": resolved_topic_key, "decision_desc": scoped_desc}
+                        )
 
             logger.info("🎉 지식 그래프(Knowledge Graph) 적재 완료!")
         except Exception:

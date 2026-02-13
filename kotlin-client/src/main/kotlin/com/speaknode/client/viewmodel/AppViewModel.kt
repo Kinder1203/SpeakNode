@@ -56,7 +56,7 @@ class AppViewModel(
             _serverStatus.value = ServerStatus.Connecting
             try {
                 val resp = api.health()
-                _serverStatus.value = if (resp.status == "ok") ServerStatus.Connected else ServerStatus.Error
+                _serverStatus.value = if (resp.status == "online") ServerStatus.Connected else ServerStatus.Error
             } catch (e: Exception) {
                 _serverStatus.value = ServerStatus.Error
                 _error.value = "서버 연결 실패: ${e.message}"
@@ -113,6 +113,7 @@ class AppViewModel(
                 _meetings.value = resp.meetings
             } catch (e: Exception) {
                 _meetings.value = emptyList()
+                _error.value = "미팅 목록 로드 실패: ${e.message}"
             }
         }
     }

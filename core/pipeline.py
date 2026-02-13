@@ -125,6 +125,10 @@ class SpeakNodeEngine:
         logger.info("   Step 2: 문맥 벡터화 및 대화 흐름 저장...")
         target_db_path = db_path if db_path else self.config.get_chat_db_path()
 
+        # 임베딩을 DB 접근 이전에 먼저 수행하여,
+        # 임베딩 실패 시 DB에 빈 Meeting 노드가 남는 것을 방지합니다.
+        embeddings = self.embed(segments)
+
         with KuzuManager(db_path=target_db_path, config=self.config) as db:
             now = datetime.datetime.now()
             meeting_id = f"m_{now.strftime('%Y%m%d_%H%M%S_%f')}"
@@ -140,7 +144,6 @@ class SpeakNodeEngine:
                 source_file=os.path.basename(audio_path),
             )
 
-            embeddings = self.embed(segments)
             db.ingest_transcript(segments, embeddings, meeting_id=meeting_id)
 
             # --- Step 3: LLM 추출 ---

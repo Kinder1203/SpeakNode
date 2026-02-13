@@ -47,7 +47,9 @@ data class StatusResponse(
 @Serializable
 data class HealthResponse(
     val status: String,
-    val engine: String,
+    @SerialName("engine_ready") val engineReady: Boolean = false,
+    @SerialName("chat_count") val chatCount: Int = 0,
+    val version: String = "",
 )
 
 @Serializable
@@ -104,7 +106,7 @@ data class AgentResponse(
 @Serializable
 data class ChatListResponse(
     val status: String,
-    @SerialName("chat_ids") val chatIds: List<String>,
+    @SerialName("chats") val chatIds: List<String> = emptyList(),
 )
 
 @Serializable
