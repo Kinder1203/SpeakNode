@@ -26,13 +26,22 @@ class SpeakNodeConfig:
     whisper_language: str = "ko"
     whisper_beam_size: int = 5
 
+    # --- Speaker Diarization (화자 분리) ---
+    enable_diarization: bool = False
+    hf_token: str = ""  # pyannote.audio HuggingFace 토큰
+
     # --- Embedding (이해) ---
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dim: int = 384
+    embedding_batch_size: int = 64  # OOM 방지를 위한 배치 크기
 
     # --- LLM (지능) ---
     llm_model: str = "qwen2.5:14b"
     llm_temperature: float = 0.0
+
+    # --- Agent (Phase 4) ---
+    agent_model: str = "qwen2.5:14b"  # Agent LLM (기본: llm_model과 동일)
+    agent_max_iterations: int = 10    # Agent 최대 반복 횟수
 
     # --- Database (기억) ---
     db_base_dir: str = field(default_factory=_default_db_base_dir)

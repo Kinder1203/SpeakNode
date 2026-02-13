@@ -60,10 +60,19 @@ class SpeakNodeEngine:
     def embed(self, segments: list[dict]) -> list[list[float]]:
         """
         Step 2: 세그먼트 텍스트를 벡터로 변환.
+        OOM 방지를 위해 batch_size 단위로 분할 인코딩.
         Agent가 특정 텍스트의 벡터가 필요할 때 단독 호출 가능.
         """
         texts = [seg["text"] for seg in segments]
-        return self.embedder.encode(texts).tolist()
+        batch_size = self.config.embedding_batch_size
+        all_embeddings = []
+
+        for i in range(0, len(texts), batch_size):
+            batch = texts[i : i + batch_size]
+            batch_vectors = self.embedder.encode(batch).tolist()
+            all_embeddings.extend(batch_vectors)
+
+        return all_embeddings
 
     def extract(self, transcript_text: str) -> dict:
         """
@@ -125,6 +134,21 @@ class SpeakNodeEngine:
 
         print("✅ [Pipeline] 모든 분석 및 저장이 완료되었습니다.")
         return analysis_data
+
+    # ================================================================
+    # 🤖 Agent 생성 — Phase 4
+    # ================================================================
+
+    def create_agent(self, db_path: str = None):
+        """
+        해당 DB에 연결된 AI Agent 인스턴스를 반환합니다.
+        Agent는 Hybrid RAG + LLM으로 질문에 답변하거나 이메일 초안을 작성합니다.
+        """
+        from core.agent import SpeakNodeAgent
+
+        target_db_path = db_path or self.config.get_chat_db_path()
+        return SpeakNodeAgent(db_path=target_db_path, config=self.config)
+
 
 if __name__ == "__main__":
     engine = SpeakNodeEngine()

@@ -157,3 +157,40 @@ def reset_chat(chat_id: str):
         raise HTTPException(status_code=500, detail=f"failed to reset chat db: {e}")
 
     return {"status": "success", "chat_id": safe_chat_id, "message": "reset complete"}
+
+
+# ================================================================
+# 🤖 Agent API (Phase 4)
+# ================================================================
+
+class AgentQueryRequest(BaseModel):
+    question: str
+    chat_id: str = "default"
+
+
+@app.post("/agent/query")
+async def agent_query(payload: AgentQueryRequest):
+    """Agent에게 자연어 질의를 보내고 응답을 받습니다."""
+    if not engine:
+        raise HTTPException(status_code=503, detail="Server not ready")
+
+    safe_chat_id = sanitize_chat_id(payload.chat_id)
+    chat_db_path = get_chat_db_path(safe_chat_id)
+
+    if not os.path.exists(chat_db_path):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Chat '{safe_chat_id}' DB가 존재하지 않습니다. 먼저 오디오를 분석해주세요.",
+        )
+
+    try:
+        loop = asyncio.get_running_loop()
+        agent = engine.create_agent(db_path=chat_db_path)
+        response = await loop.run_in_executor(
+            executor, agent.query, payload.question
+        )
+        return {"status": "success", "chat_id": safe_chat_id, "answer": response}
+    except Exception as e:
+        print(f"❌ Agent 오류: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+

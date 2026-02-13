@@ -187,17 +187,86 @@ if st.session_state['analysis_result']:
     st.divider()
     vc.display_analysis_cards(result)
     
-    c1, c2 = st.columns([2, 1])
+    # --- 탭 레이아웃: 그래프 / AI Agent / 저장 ---
+    tab_graph, tab_agent, tab_save = st.tabs(["🕸️ Knowledge Graph", "🤖 AI Agent", "💾 저장"])
     
-    with c1:
+    with tab_graph:
         if os.path.exists(current_db_path):
             vc.render_graph_view(current_db_path)
         else:
             st.info("현재 채팅에는 아직 저장된 그래프 데이터가 없습니다.")
+
+    with tab_agent:
+        st.subheader("🤖 AI Agent — 회의 데이터 질의")
+        st.caption("회의 내용에 대해 자유롭게 질문하세요. 이메일 초안 작성도 가능합니다.")
         
-    with c2:
-        st.subheader("💾 저장")
-        st.info("현재 결과를 지식 그래프 이미지로 저장합니다.")
+        # 세션 상태: Agent 대화 히스토리
+        if "agent_chat_history" not in st.session_state:
+            st.session_state["agent_chat_history"] = []
+        
+        # 이전 대화 표시
+        for msg in st.session_state["agent_chat_history"]:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+        
+        # 예시 질문 버튼
+        if not st.session_state["agent_chat_history"]:
+            st.markdown("**💡 예시 질문:**")
+            example_cols = st.columns(3)
+            examples = [
+                "이번 회의에서 결정된 사항을 알려줘",
+                "누가 어떤 할 일을 맡았어?",
+                "회의 결과를 팀원에게 이메일로 보내줘",
+            ]
+            for i, example in enumerate(examples):
+                if example_cols[i].button(example, key=f"example_{i}"):
+                    st.session_state["_pending_agent_query"] = example
+                    st.rerun()
+        
+        # 채팅 입력
+        pending_query = st.session_state.pop("_pending_agent_query", None)
+        user_input = st.chat_input("회의 데이터에 대해 질문하세요...")
+        query = pending_query or user_input
+        
+        if query:
+            # 사용자 메시지 표시 & 저장
+            st.session_state["agent_chat_history"].append({"role": "user", "content": query})
+            with st.chat_message("user"):
+                st.markdown(query)
+            
+            # Agent 실행
+            with st.chat_message("assistant"):
+                with st.spinner("🔍 분석 중..."):
+                    try:
+                        engine = get_engine()
+                        agent = engine.create_agent(db_path=current_db_path)
+                        
+                        # LangChain 메시지 히스토리 구성
+                        from langchain_core.messages import HumanMessage as HM, AIMessage as AM
+                        lc_history = []
+                        for msg in st.session_state["agent_chat_history"][:-1]:  # 현재 질문 제외
+                            if msg["role"] == "user":
+                                lc_history.append(HM(content=msg["content"]))
+                            else:
+                                lc_history.append(AM(content=msg["content"]))
+                        
+                        response = agent.query(query, chat_history=lc_history)
+                        st.markdown(response)
+                        st.session_state["agent_chat_history"].append({"role": "assistant", "content": response})
+                    except Exception as e:
+                        error_msg = f"❌ Agent 오류: {e}"
+                        st.error(error_msg)
+                        st.session_state["agent_chat_history"].append({"role": "assistant", "content": error_msg})
+        
+        # 대화 초기화 버튼
+        if st.session_state["agent_chat_history"]:
+            if st.button("🗑️ 대화 초기화", key="clear_agent_chat"):
+                st.session_state["agent_chat_history"] = []
+                st.rerun()
+
+    with tab_save:
+        st.subheader("💾 지식 그래프 이미지 저장")
+        st.info("현재 결과를 지식 그래프 이미지로 저장합니다. PNG에 데이터가 포함되어 공유 시 DB 복원이 가능합니다.")
         buf = vc.generate_static_graph_image(current_db_path, result)
         if buf:
             st.download_button("📥 그래프 다운로드", buf, "graph.png", "image/png")

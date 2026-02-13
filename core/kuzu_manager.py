@@ -77,16 +77,23 @@ class KuzuManager:
                     if "already exists" not in str(e).lower():
                         print(f"⚠️ 스키마 생성 중 예외 발생 ({definition}): {e}")
 
-    def ingest_transcript(self, segments: list, embeddings: list = None, meeting_id: str = None):
+    def ingest_transcript(self, segments: list, embeddings: list = None, meeting_id: str = None) -> int:
         """
         STT 결과(전체 대화 내용)를 DB에 적재
         - segments: Transcriber 결과 리스트
         - embeddings: 각 세그먼트에 대응하는 벡터 리스트 (Optional)
         - meeting_id: 회의 ID (있으면 Meeting-CONTAINS 연결)
+        반환값: 성공적으로 적재된 세그먼트 수
         """
         print(f"📥 [DB] 대화 내용 적재 시작 (총 {len(segments)} 문장)...")
         dim = self.config.embedding_dim
         previous_id = None
+        ingested_count = 0
+        
+        # --- 임베딩 싱크 검증 ---
+        if embeddings is not None and len(embeddings) != len(segments):
+            print(f"⚠️ [DB] 임베딩 길이 불일치! segments={len(segments)}, embeddings={len(embeddings)}. "
+                  f"부족분은 제로벡터로 채워집니다 (Vector RAG 품질 저하 가능).")
         
         try:
             for i, seg in enumerate(segments):
@@ -131,12 +138,15 @@ class KuzuManager:
                     )
                 
                 previous_id = u_id
+                ingested_count += 1
                 
-            print(f"✅ [DB] 대화 흐름(NEXT) 및 화자(SPOKE) 연결 완료.")
+            print(f"✅ [DB] 대화 흐름(NEXT) 및 화자(SPOKE) 연결 완료. ({ingested_count}/{len(segments)}건 적재)")
             
         except Exception as e:
-            print(f"❌ 대화 내용 적재 중 오류: {e}")
+            print(f"❌ 대화 내용 적재 중 오류 (적재 완료: {ingested_count}/{len(segments)}건): {e}")
             raise e
+        
+        return ingested_count
 
     def ingest_data(self, analysis_result: dict, meeting_id: str = None):
         """

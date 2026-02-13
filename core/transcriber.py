@@ -10,6 +10,7 @@ class Transcriber:
         config가 주어지면 config 우선, 아니면 개별 인자 사용 (역호환)
         """
         cfg = config or SpeakNodeConfig()
+        self.config = cfg
         self.language = cfg.whisper_language
         self.beam_size = cfg.whisper_beam_size
         _model_size = model_size or cfg.whisper_model
@@ -36,6 +37,47 @@ class Transcriber:
         except Exception as e:
             print(f"❌ [Transcriber] Critical Error loading model: {e}")
             raise e
+
+        # --- 화자 분리(Diarization) 초기화 (선택적) ---
+        self.diarization_pipeline = None
+        if cfg.enable_diarization and cfg.hf_token:
+            try:
+                from pyannote.audio import Pipeline as DiarizationPipeline
+                print("🎙️ [Transcriber] Loading Speaker Diarization model...")
+                self.diarization_pipeline = DiarizationPipeline.from_pretrained(
+                    "pyannote/speaker-diarization-3.1",
+                    use_auth_token=cfg.hf_token,
+                )
+                if self.device == "cuda":
+                    self.diarization_pipeline.to(torch.device("cuda"))
+                print("✅ [Transcriber] Diarization model loaded.")
+            except ImportError:
+                print("⚠️ [Transcriber] pyannote.audio 미설치. 화자 분리 비활성화.")
+            except Exception as e:
+                print(f"⚠️ [Transcriber] Diarization 로드 실패 (계속 진행): {e}")
+
+    def _assign_speakers(self, segments: list[dict], diarization_result) -> list[dict]:
+        """
+        Diarization 결과와 STT 세그먼트의 타임스탬프를 매칭하여
+        각 세그먼트에 speaker 필드를 할당합니다.
+        """
+        for seg in segments:
+            seg_mid = (seg["start"] + seg["end"]) / 2.0
+            best_speaker = "Unknown"
+            best_overlap = 0.0
+
+            for turn, _, speaker in diarization_result.itertracks(yield_label=True):
+                # 세그먼트 중간점이 diarization turn 안에 있는지 확인
+                overlap_start = max(seg["start"], turn.start)
+                overlap_end = min(seg["end"], turn.end)
+                overlap = max(0.0, overlap_end - overlap_start)
+
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_speaker = speaker
+
+            seg["speaker"] = best_speaker
+        return segments
 
     def transcribe(self, audio_path):
         """
@@ -77,6 +119,17 @@ class Transcriber:
                     "text": segment.text.strip()
                 })
         
+        # --- 화자 분리 적용 (활성화된 경우) ---
+        if self.diarization_pipeline and result_data:
+            try:
+                print("🎙️ [Transcriber] 화자 분리 수행 중...")
+                diarization_result = self.diarization_pipeline(audio_path)
+                result_data = self._assign_speakers(result_data, diarization_result)
+                speaker_set = set(seg.get("speaker", "Unknown") for seg in result_data)
+                print(f"✅ [Transcriber] 화자 분리 완료. 감지된 화자: {speaker_set}")
+            except Exception as e:
+                print(f"⚠️ [Transcriber] 화자 분리 실패 (STT 결과는 유지): {e}")
+
         print(f"✅ [Transcriber] Completed. Total segments: {len(result_data)}")
         return result_data
 
