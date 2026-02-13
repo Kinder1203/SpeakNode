@@ -1,5 +1,7 @@
 import json
 import textwrap
+import base64
+import zlib
 from PIL import Image, ImageDraw, ImageFont
 from PIL.PngImagePlugin import PngInfo
 import os
@@ -19,7 +21,7 @@ class ShareManager:
         img = Image.new('RGB', (width, height), color=(30, 30, 30))
         draw = ImageDraw.Draw(img)
 
-        # 2. 폰트 설정 (OS 호환성 강화) [New]
+        # 2. 폰트 설정 (OS 호환)
         font_path = None
         try:
             if os.name == 'posix':  # Linux (RunPod 등)
@@ -66,8 +68,7 @@ class ShareManager:
 
         # 3. 메타데이터에 JSON 숨기기
         metadata = PngInfo()
-        json_str = json.dumps(data, ensure_ascii=False)
-        metadata.add_text("speaknode_data", json_str)
+        metadata.add_text("speaknode_data_zlib_b64", self._encode_payload(data))
 
         # 4. 저장
         save_path = os.path.join(self.output_dir, filename)
@@ -79,14 +80,30 @@ class ShareManager:
         """이미지 안에 숨겨진 SpeakNode 데이터를 추출"""
         try:
             img = Image.open(image_path)
-            json_str = img.text.get("speaknode_data")
-            
-            if json_str:
+            compressed = img.text.get("speaknode_data_zlib_b64")
+            legacy_json = img.text.get("speaknode_data")
+
+            if compressed:
+                print(f"🔓 [Share] 이미지에서 압축 데이터 추출 성공!")
+                return self._decode_payload(compressed)
+            if legacy_json:
                 print(f"🔓 [Share] 이미지에서 데이터 추출 성공!")
-                return json.loads(json_str)
-            else:
-                print(f"⚠️ [Share] 이 이미지는 SpeakNode 데이터가 없습니다.")
-                return None
+                return json.loads(legacy_json)
+
+            print(f"⚠️ [Share] 이 이미지는 SpeakNode 데이터가 없습니다.")
+            return None
         except Exception as e:
             print(f"❌ [Share] 이미지 읽기 실패: {e}")
             return None
+
+    @staticmethod
+    def _encode_payload(data) -> str:
+        raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        compressed = zlib.compress(raw, level=9)
+        return base64.b64encode(compressed).decode("ascii")
+
+    @staticmethod
+    def _decode_payload(encoded: str):
+        compressed = base64.b64decode(encoded.encode("ascii"))
+        raw = zlib.decompress(compressed).decode("utf-8")
+        return json.loads(raw)

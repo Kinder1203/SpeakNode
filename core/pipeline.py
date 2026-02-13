@@ -5,6 +5,7 @@ Lazy Loading: 각 모듈은 처음 사용될 때만 메모리에 로드됩니다
 Agent만 사용하는 경우 Whisper 모델(수 GB)을 로드하지 않습니다.
 """
 
+import datetime
 import os
 
 from core.config import SpeakNodeConfig
@@ -112,16 +113,19 @@ class SpeakNodeEngine:
         target_db_path = db_path if db_path else self.config.get_chat_db_path()
 
         with KuzuManager(db_path=target_db_path, config=self.config) as db:
-            meeting_id = None
-            if meeting_title:
-                import datetime
-                meeting_id = f"m_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
-                db.create_meeting(
-                    meeting_id=meeting_id,
-                    title=meeting_title,
-                    date=datetime.datetime.now().strftime("%Y-%m-%d"),
-                    source_file=os.path.basename(audio_path),
-                )
+            now = datetime.datetime.now()
+            meeting_id = f"m_{now.strftime('%Y%m%d_%H%M%S_%f')}"
+            normalized_title = (meeting_title or "").strip()
+            if not normalized_title:
+                source_name = os.path.splitext(os.path.basename(audio_path))[0].strip()
+                normalized_title = source_name or f"회의_{now.strftime('%Y-%m-%d_%H:%M')}"
+
+            db.create_meeting(
+                meeting_id=meeting_id,
+                title=normalized_title,
+                date=now.strftime("%Y-%m-%d"),
+                source_file=os.path.basename(audio_path),
+            )
 
             embeddings = self.embed(segments)
             db.ingest_transcript(segments, embeddings, meeting_id=meeting_id)

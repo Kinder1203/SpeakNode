@@ -51,55 +51,54 @@ Hard rules:
     def _normalize(self, raw: dict, transcript: str) -> AnalysisResult:
         data = raw if isinstance(raw, dict) else {}
 
-        # 1. Topics 처리 (proposer 추가)
         topics = []
         for item in data.get("topics", []):
-            if not isinstance(item, dict): continue
+            if not isinstance(item, dict):
+                continue
             title = str(item.get("title", "")).strip()
             summary = str(item.get("summary", "")).strip()
-            proposer = str(item.get("proposer", "Unknown")).strip()  # [New]
+            proposer = str(item.get("proposer", "Unknown")).strip()
             
-            if not title: continue
+            if not title:
+                continue
             topics.append(Topic(title=title, summary=summary, proposer=proposer))
 
-        # 2. Decisions 처리 (related_topic 추가)
         decisions = []
         for item in data.get("decisions", []):
-            if not isinstance(item, dict): continue
+            if not isinstance(item, dict):
+                continue
             description = str(item.get("description", "")).strip()
-            related_topic = str(item.get("related_topic", "")).strip() # [New]
+            related_topic = str(item.get("related_topic", "")).strip()
             
-            # 관련 토픽이 비어있다면 첫 번째 토픽과 연결 (Safe fallback)
             if not related_topic and topics:
                 related_topic = topics[0].title
 
-            if not description: continue
+            if not description:
+                continue
             decisions.append(Decision(description=description, related_topic=related_topic))
 
-        # 3. Tasks 처리
         tasks = []
         for item in data.get("tasks", []):
-            if not isinstance(item, dict): continue
+            if not isinstance(item, dict):
+                continue
             description = str(item.get("description", "")).strip()
             assignee = str(item.get("assignee", "Unassigned")).strip() or "Unassigned"
             
-            if not description: continue
+            if not description:
+                continue
             tasks.append(Task(description=description, assignee=assignee, status="pending"))
 
-        # 4. People 자동 생성 (모든 등장인물 수집) [New]
         people_set = set()
-        # 토픽 제안자 수집
         for t in topics:
             if t.proposer and t.proposer not in ["Unknown", "None"]:
                 people_set.add(t.proposer)
-        # 업무 담당자 수집
         for t in tasks:
             if t.assignee and t.assignee not in ["Unassigned", "None"]:
                 people_set.add(t.assignee)
         
         people_list = [Person(name=p, role="Member") for p in people_set]
 
-        # Conservative safety-net
+        # Conservative safety net: transcript 신호가 없으면 결과를 비웁니다.
         if not self._has_decision_signal(transcript):
             decisions = []
         if not self._has_task_signal(transcript):

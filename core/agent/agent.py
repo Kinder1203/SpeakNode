@@ -29,6 +29,7 @@ from core.agent.hybrid_rag import HybridRAG
 # tools 패키지의 default_registry에 모든 도구가 등록됨
 from core.agent.tools import default_registry as tool_registry
 import core.agent.tools.search_tools    # noqa: F401  — 등록 트리거
+import core.agent.tools.cypher_tools    # noqa: F401
 import core.agent.tools.meeting_tools   # noqa: F401
 import core.agent.tools.email_tools     # noqa: F401
 import core.agent.tools.general_tools   # noqa: F401
@@ -69,7 +70,13 @@ Respond with JSON only:
 Rules:
 - For questions about specific content/what was said: use "search_by_meaning"
 - For questions about people, topics, tasks, decisions: use "search_by_structure"
+  - include tool_args.entity_type in ["topic","task","decision","person","meeting"]
+  - include tool_args.keyword when relevant
 - For complex questions combining multiple aspects: use "hybrid_search"
+  - include tool_args.query as the full user question
+- For conditional/structured graph questions requiring explicit filters or custom joins: use "search_by_cypher"
+  - include tool_args.query as the full user question
+  - include tool_args.limit when user requests count/limit
 - For meeting overview/summary: use "get_meeting_summary"
 - For email drafting requests: use "draft_email"
 - For general greetings or questions not related to meeting data: use "direct_answer"
@@ -81,7 +88,8 @@ Rules:
     try:
         parsed = json.loads(response.content.strip())
         state["tool_name"] = parsed.get("tool_name", "direct_answer")
-        state["tool_args"] = parsed.get("tool_args", {})
+        tool_args = parsed.get("tool_args", {})
+        state["tool_args"] = tool_args if isinstance(tool_args, dict) else {}
     except (json.JSONDecodeError, AttributeError):
         state["tool_name"] = "hybrid_search"
         last_human = ""

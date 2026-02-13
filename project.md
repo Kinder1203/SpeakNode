@@ -1,124 +1,124 @@
-# 📁 Project Blueprint: SpeakNode (v2.0 Kotlin Edition)
-### AI 기반 로컬 회의록 시각화 및 지능형 관리 시스템
+# SpeakNode Project Blueprint (v2.1)
+로컬 회의 데이터 지식화 및 에이전트 기반 활용 시스템
 
-## 1. 🏗️ High-Level System Architecture (전체 구조도)
-**"Python Brain + Kotlin Body"** 구조의 **완전 독립형(Standalone) 어플리케이션**.
+## 1. Architecture
+### Core Principle
+- Python Brain + Kotlin Body
+- 오프라인 우선(local-first), 파일 기반 그래프 메모리
 
-* **Core Layer (The Brain):** STT, LLM, DB, Agent 등 모든 AI 핵심 로직 (Python).
-* **Interface Layer A (Prototype):** Streamlit — 빠른 검증 및 시각화.
-* **Interface Layer B (Production):** FastAPI + Kotlin Native App.
-    * **Server:** Python(FastAPI)이 로컬에서 AI 엔진 역할 수행.
-    * **Client:** Kotlin(Compose) PC 앱이 서버와 통신하며 UI 제공.
+### Layers
+1. Core Layer (Python)
+   STT, Embedding, Extraction, Graph DB, Agent
+2. Interface Layer A
+   Streamlit 기반 검증/운영 대시보드
+3. Interface Layer B
+   FastAPI 서버 + Kotlin 클라이언트
 
-## 2. 🛠️ Tech Stack (기술 스택)
+## 2. Technical Stack
+| Domain | Stack | Role |
+|---|---|---|
+| STT | Faster-Whisper | 음성 → 텍스트 |
+| Embedding | Sentence-Transformers | 발화 벡터화 |
+| LLM | Ollama + LangChain | 정보 추출/응답 생성 |
+| Agent | LangGraph | Router-Tool-Synthesizer 흐름 |
+| DB | KuzuDB | Graph + Vector 저장 |
+| API | FastAPI | Python 서비스 계층 |
+| UI | Streamlit / Kotlin Compose | 운영 UI |
 
-| 구분 | 기술 | 역할 |
-| :--- | :--- | :--- |
-| **STT (귀)** | Faster-Whisper | GPU 가속 고속 변환 (C++ 최적화) |
-| **Orchestration** | LangChain / LangGraph | LLM 흐름 제어, Agent 워크플로 |
-| **LLM (지능)** | Ollama (Local) | Llama 3, DeepSeek 등 로컬 모델 (API 비용 0원) |
-| **Database (뇌)** | KuzuDB (Embedded) | 파일 기반 그래프 DB (Graph + Vector) |
-| **Backend API** | FastAPI | Python ↔ Kotlin 연결 고속 API |
-| **Frontend (Test)** | Streamlit | 빠른 프로토타이핑 대시보드 |
-| **Frontend (Prod)** | Kotlin (Compose) | 네이티브 PC 앱 |
-| **Type Safety** | Pydantic | 도메인 모델 타입 강제 |
-| **Packaging** | PyInstaller / MSI | 원클릭 설치 파일 |
+## 3. Data Flow
+1. Transcribe: 오디오를 발화 세그먼트로 변환
+2. Embed: 발화 임베딩 생성
+3. Extract: 주제/결정/할 일/인물 구조화
+4. Ingest: Meeting 단위 그래프 적재
+5. Query: Hybrid RAG + Agent 응답
+6. Cypher Query: 자연어를 읽기 전용 Cypher로 변환해 구조 질의
+7. Share: PNG 메타데이터(압축)를 통한 그래프 덤프 공유/복원
 
-## 3. 🔄 Data Processing Pipeline
-
-| 단계 | 프로세스 | 기술 | 세부 동작 |
-| :--- | :--- | :--- | :--- |
-| **Step 1** | Transcribe | Faster-Whisper | GPU 가속 + 화자 분리(Optional) + 타임스탬프 |
-| **Step 2** | Understanding | Sentence-Transformers | 384차원 벡터 생성 (Lazy + Batch 인코딩) |
-| **Step 3** | Extraction | LangChain + Ollama | Entity/Relation JSON 추출 → Pydantic 모델 |
-| **Step 4** | Schema Mapping | Python Logic | AnalysisResult → KuzuDB 스키마 변환 |
-| **Step 5** | Ingest | Kuzu Python API | .kuzu 파일 적재 (Node/Edge 생성) |
-
-## 4. 🗄️ Database Schema (KuzuDB)
-
-### A. Node Tables
+## 4. Graph Schema (KuzuDB)
+### Node
 ```sql
-CREATE NODE TABLE Person(name STRING, role STRING, PRIMARY KEY(name))
-CREATE NODE TABLE Topic(title STRING, summary STRING, PRIMARY KEY(title))
-CREATE NODE TABLE Task(description STRING, deadline STRING, status STRING, PRIMARY KEY(description))
-CREATE NODE TABLE Decision(description STRING, PRIMARY KEY(description))
-CREATE NODE TABLE Utterance(id STRING, text STRING, startTime FLOAT, endTime FLOAT, embedding FLOAT[384], PRIMARY KEY(id))
-CREATE NODE TABLE Meeting(id STRING, title STRING, date STRING, source_file STRING, PRIMARY KEY(id))
+CREATE NODE TABLE Person(name STRING, role STRING, PRIMARY KEY(name));
+CREATE NODE TABLE Topic(title STRING, summary STRING, PRIMARY KEY(title));
+CREATE NODE TABLE Task(description STRING, deadline STRING, status STRING, PRIMARY KEY(description));
+CREATE NODE TABLE Decision(description STRING, PRIMARY KEY(description));
+CREATE NODE TABLE Utterance(
+  id STRING,
+  text STRING,
+  startTime FLOAT,
+  endTime FLOAT,
+  embedding FLOAT[384],
+  PRIMARY KEY(id)
+);
+CREATE NODE TABLE Meeting(id STRING, title STRING, date STRING, source_file STRING, PRIMARY KEY(id));
 ```
 
-### B. Relationship Tables
+### Relationship
 ```sql
-CREATE REL TABLE PROPOSED(FROM Person TO Topic)
-CREATE REL TABLE ASSIGNED_TO(FROM Person TO Task)
-CREATE REL TABLE RESULTED_IN(FROM Topic TO Decision)
-CREATE REL TABLE SPOKE(FROM Person TO Utterance)
-CREATE REL TABLE NEXT(FROM Utterance TO Utterance)
-CREATE REL TABLE DISCUSSED(FROM Meeting TO Topic)
-CREATE REL TABLE CONTAINS(FROM Meeting TO Utterance)
+CREATE REL TABLE PROPOSED(FROM Person TO Topic);
+CREATE REL TABLE ASSIGNED_TO(FROM Person TO Task);
+CREATE REL TABLE RESULTED_IN(FROM Topic TO Decision);
+CREATE REL TABLE SPOKE(FROM Person TO Utterance);
+CREATE REL TABLE NEXT(FROM Utterance TO Utterance);
+CREATE REL TABLE DISCUSSED(FROM Meeting TO Topic);
+CREATE REL TABLE CONTAINS(FROM Meeting TO Utterance);
+CREATE REL TABLE HAS_TASK(FROM Meeting TO Task);
+CREATE REL TABLE HAS_DECISION(FROM Meeting TO Decision);
 ```
 
-## 5. 📂 Directory Structure
+## 5. API Scope (Phase 5.1)
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/analyze` | 파일 분석 및 그래프 적재 |
+| POST | `/agent/query` | Agent 질의 |
+| GET | `/chats` | 채팅 목록 |
+| POST | `/chats` | 채팅 생성 |
+| DELETE | `/chats/{chat_id}` | 채팅 DB 초기화 |
+| GET | `/meetings` | 회의 목록 조회 |
+| GET | `/meetings/{meeting_id}` | 회의 상세 |
+| GET | `/graph/export` | 그래프 덤프 추출 (`include_embeddings` 옵션) |
+| POST | `/graph/import` | 그래프 덤프 복원 |
+| PATCH | `/nodes/update` | 노드 속성 업데이트 |
 
-```
+## 6. Directory Structure
+```text
 SpeakNode/
-├── assets/                          # 공용 아이콘, 로고 이미지
-├── core/                            # [The Brain — 핵심 로직 (Python)]
-│   ├── __init__.py
-│   ├── config.py                    # 중앙 설정 (모델명, 차원, 경로 등)
-│   ├── domain.py                    # ★ Pydantic 도메인 모델 정의
-│   ├── pipeline.py                  # 실행 파이프라인 (Lazy Loading)
-│   ├── agent.py                     # LangGraph 지능형 에이전트
-│   ├── hybrid_rag.py                # Vector + Graph RAG 결합 검색
-│   ├── transcriber.py               # Faster-Whisper STT + 화자 분리
-│   ├── extractor.py                 # LLM 정보 추출 → AnalysisResult
-│   ├── kuzu_manager.py              # KuzuDB CRUD
-│   ├── share_manager.py             # PNG 스테가노그래피 데이터 공유
-│   ├── check_db.py                  # DB 디버그 유틸리티
-│   └── tools/                       # ★ ToolRegistry 기반 도구 패키지
-│       ├── __init__.py              # ToolRegistry + @register 데코레이터
-│       ├── search_tools.py          # Vector/Graph/Hybrid 검색
-│       ├── meeting_tools.py         # 회의 요약
-│       ├── email_tools.py           # 이메일 초안 생성
-│       └── general_tools.py         # 직접 답변
-├── database/                        # [The Memory — 데이터 저장소]
-│   └── speach.kuzu/
-├── interfaces/                      # [The Face — 인터페이스]
-│   ├── streamlit_app/               # Track A: 테스트용
-│   │   ├── app.py                   # Streamlit 메인 (Agent 탭 포함)
-│   │   └── view_components.py       # UI 컴포넌트
-│   └── api_server/                  # Track B: 배포용 서버
-│       └── server.py                # FastAPI (Agent API 포함)
-├── kotlin_client/                   # Track B: Kotlin 앱
-│   ├── src/
-│   └── build.gradle.kts
-├── run_test.bat                     # Streamlit 실행
-├── run_server.bat                   # FastAPI 서버 실행
-├── requirements.txt                 # Python 의존성
-├── .gitignore
-├── README.md                        # 프로젝트 소개
-└── project.md                       # 설계 문서 (이 파일)
+├── core/
+│   ├── config.py
+│   ├── domain.py
+│   ├── pipeline.py
+│   ├── stt/transcriber.py
+│   ├── llm/extractor.py
+│   ├── db/
+│   │   ├── kuzu_manager.py
+│   │   └── check_db.py
+│   ├── shared/share_manager.py
+│   └── agent/
+│       ├── agent.py
+│       ├── hybrid_rag.py
+│       └── tools/
+├── interfaces/
+│   ├── streamlit_app/
+│   │   ├── app.py
+│   │   └── view_components.py
+│   └── api_server/server.py
+├── scripts/api_smoke_test.py
+├── docs/api_examples.http
+└── requirements.txt
 ```
 
-## 6. 🚀 Roadmap
+## 7. Phase 5.1 Completion Criteria
+- 파일 업로드 검증(확장자/크기) 적용
+- 채팅 단위 동기화 락 적용
+- 회의/그래프 조회 및 복원 API 제공
+- 노드 속성 업데이트 API 제공
+- 스모크 테스트 스크립트 제공
+- HTTP 요청 컬렉션 제공
 
-### Phase 1: Foundation — ✅ Complete
-- [x] 폴더 구조 생성, KuzuDB 스키마, 더미 데이터 테스트
-
-### Phase 2: The Core Logic — ✅ Complete
-- [x] STT (Faster-Whisper), LLM 추출 (Ollama), Pipeline 통합
-
-### Phase 3: Track A — Prototype — ✅ Complete
-- [x] Streamlit 파일 업로드, PyVis 그래프 시각화
-
-### Phase 3.5: Memory/Vector — ✅ Complete
-- [x] Utterance Embedding, NEXT Edge, 벡터 검색 추가
-
-### Phase 4: Intelligent Agent — ✅ Complete
-- [x] Step 4-1: LangGraph Agent (`agent.py`) + ToolRegistry 패턴
-- [x] Step 4-2: Pipeline ↔ Agent 연결, Lazy Loading
-- [x] Step 4-3: Hybrid RAG (Vector + Graph), Pydantic Domain Models
-- [x] Step 4-4: Streamlit Agent 탭 + FastAPI Agent API
-
-### Phase 5: Track B — Production — 📌 Next
-- [ ] Step 5-1: FastAPI 서버 고도화
-- [ ] Step 5-2: Kotlin Native Client 개발
+## 8. Roadmap Status
+- Phase 1 Foundation: Complete
+- Phase 2 Core Logic: Complete
+- Phase 3 Prototype UI: Complete
+- Phase 3.5 Vector Memory: Complete
+- Phase 4 Intelligent Agent: Complete
+- Phase 5.1 FastAPI Hardening: Complete
+- Phase 5.2 Kotlin Client: Planned

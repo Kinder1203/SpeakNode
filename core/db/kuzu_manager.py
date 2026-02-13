@@ -1,7 +1,22 @@
 import kuzu
 import os
-import shutil
 from core.config import SpeakNodeConfig
+
+ALLOWED_TASK_STATUSES = {"pending", "in_progress", "done", "blocked"}
+
+
+def _normalize_task_status(raw: str) -> str:
+    status = str(raw or "").strip().lower()
+    aliases = {
+        "to do": "pending",
+        "todo": "pending",
+        "in progress": "in_progress",
+        "complete": "done",
+        "completed": "done",
+    }
+    normalized = aliases.get(status, status)
+    return normalized if normalized in ALLOWED_TASK_STATUSES else "pending"
+
 
 class KuzuManager:
     def __init__(self, db_path=None, config: SpeakNodeConfig = None):
@@ -33,8 +48,12 @@ class KuzuManager:
         try:
             # Connection → Database 순서로 해제 (의존 순서 역순)
             if getattr(self, "conn", None) is not None:
+                if hasattr(self.conn, "close"):
+                    self.conn.close()
                 self.conn = None
             if getattr(self, "db", None) is not None:
+                if hasattr(self.db, "close"):
+                    self.db.close()
                 self.db = None
             print("💾 KuzuDB 리소스가 안전하게 해제되었습니다.")
         except Exception as e:
@@ -53,7 +72,6 @@ class KuzuManager:
                 "Task(description STRING, deadline STRING, status STRING, PRIMARY KEY(description))",
                 "Decision(description STRING, PRIMARY KEY(description))",
                 f"Utterance(id STRING, text STRING, startTime FLOAT, endTime FLOAT, embedding FLOAT[{dim}], PRIMARY KEY(id))",
-                # [New] 회의 단위 관리를 위한 Meeting 노드
                 "Meeting(id STRING, title STRING, date STRING, source_file STRING, PRIMARY KEY(id))",
             ],
             "REL": [
@@ -62,9 +80,10 @@ class KuzuManager:
                 "RESULTED_IN(FROM Topic TO Decision)",
                 "SPOKE(FROM Person TO Utterance)",
                 "NEXT(FROM Utterance TO Utterance)",
-                # [New] 회의 ↔ 콘텐츠 연결
                 "DISCUSSED(FROM Meeting TO Topic)",
                 "CONTAINS(FROM Meeting TO Utterance)",
+                "HAS_TASK(FROM Meeting TO Task)",
+                "HAS_DECISION(FROM Meeting TO Decision)",
             ]
         }
         
@@ -97,22 +116,21 @@ class KuzuManager:
         
         try:
             for i, seg in enumerate(segments):
-                # 1. 고유 ID 생성 (Time 기반)
-                u_id = f"u_{seg['start']:08.2f}"
-                text = seg['text']
-                start = seg['start']
-                end = seg['end']
+                # meeting_id + index 기반 식별자로 타임스탬프 충돌을 방지합니다.
+                start = float(seg.get("start", 0.0))
+                end = float(seg.get("end", 0.0))
+                text = str(seg.get("text", "")).strip()
+                scope = meeting_id or "global"
+                u_id = f"u_{scope}_{i:06d}_{int(start * 1000):010d}"
                 
                 # 임베딩이 있으면 넣고, 없으면 0으로 채움
                 vector = embeddings[i] if embeddings and i < len(embeddings) else [0.0] * dim
                 
-                # 2. Utterance 노드 생성 ($end → $etime: Cypher 예약어 충돌 방지)
                 self.conn.execute(
                     "MERGE (u:Utterance {id: $id}) ON CREATE SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
                     {"id": u_id, "text": text, "stime": start, "etime": end, "vec": vector}
                 )
                 
-                # 3. 화자(Speaker) 연결 (SPOKE)
                 speaker_name = seg.get('speaker', 'Unknown')
                 self.conn.execute(
                     "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
@@ -123,14 +141,12 @@ class KuzuManager:
                     {"name": speaker_name, "id": u_id}
                 )
                 
-                # 4. 순서 연결 (NEXT)
                 if previous_id:
                     self.conn.execute(
                         "MATCH (prev:Utterance {id: $pid}), (curr:Utterance {id: $cid}) MERGE (prev)-[:NEXT]->(curr)",
                         {"pid": previous_id, "cid": u_id}
                     )
                 
-                # 5. Meeting 연결 (CONTAINS)
                 if meeting_id:
                     self.conn.execute(
                         "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) MERGE (m)-[:CONTAINS]->(u)",
@@ -147,6 +163,246 @@ class KuzuManager:
             raise e
         
         return ingested_count
+
+    # ================================================================
+    # 📦 Dump/Restore — PNG 공유용 전체 그래프 직렬화
+    # ================================================================
+
+    def export_graph_dump(self, include_embeddings: bool = True) -> dict:
+        """현재 DB의 노드/엣지를 공유 가능한 JSON 덤프로 추출."""
+        dump = {
+            "schema_version": 2,
+            "nodes": {
+                "meetings": [],
+                "people": [],
+                "topics": [],
+                "tasks": [],
+                "decisions": [],
+                "utterances": [],
+            },
+            "edges": {
+                "proposed": [],
+                "assigned_to": [],
+                "resulted_in": [],
+                "spoke": [],
+                "next": [],
+                "discussed": [],
+                "contains": [],
+                "has_task": [],
+                "has_decision": [],
+            },
+        }
+
+        # Nodes
+        for r in self.execute_cypher("MATCH (m:Meeting) RETURN m.id, m.title, m.date, m.source_file"):
+            dump["nodes"]["meetings"].append(
+                {"id": r[0], "title": r[1], "date": r[2], "source_file": r[3]}
+            )
+        for r in self.execute_cypher("MATCH (p:Person) RETURN p.name, p.role"):
+            dump["nodes"]["people"].append({"name": r[0], "role": r[1]})
+        for r in self.execute_cypher("MATCH (t:Topic) RETURN t.title, t.summary"):
+            dump["nodes"]["topics"].append({"title": r[0], "summary": r[1]})
+        for r in self.execute_cypher("MATCH (t:Task) RETURN t.description, t.deadline, t.status"):
+            dump["nodes"]["tasks"].append(
+                {"description": r[0], "deadline": r[1], "status": r[2]}
+            )
+        for r in self.execute_cypher("MATCH (d:Decision) RETURN d.description"):
+            dump["nodes"]["decisions"].append({"description": r[0]})
+        if include_embeddings:
+            utterance_rows = self.execute_cypher(
+                "MATCH (u:Utterance) RETURN u.id, u.text, u.startTime, u.endTime, u.embedding"
+            )
+            for r in utterance_rows:
+                dump["nodes"]["utterances"].append(
+                    {"id": r[0], "text": r[1], "start": r[2], "end": r[3], "embedding": r[4]}
+                )
+        else:
+            utterance_rows = self.execute_cypher(
+                "MATCH (u:Utterance) RETURN u.id, u.text, u.startTime, u.endTime"
+            )
+            for r in utterance_rows:
+                dump["nodes"]["utterances"].append(
+                    {"id": r[0], "text": r[1], "start": r[2], "end": r[3]}
+                )
+
+        # Edges
+        for r in self.execute_cypher(
+            "MATCH (p:Person)-[:PROPOSED]->(t:Topic) RETURN p.name, t.title"
+        ):
+            dump["edges"]["proposed"].append({"person": r[0], "topic": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (p:Person)-[:ASSIGNED_TO]->(t:Task) RETURN p.name, t.description"
+        ):
+            dump["edges"]["assigned_to"].append({"person": r[0], "task": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description"
+        ):
+            dump["edges"]["resulted_in"].append({"topic": r[0], "decision": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (p:Person)-[:SPOKE]->(u:Utterance) RETURN p.name, u.id"
+        ):
+            dump["edges"]["spoke"].append({"person": r[0], "utterance_id": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (a:Utterance)-[:NEXT]->(b:Utterance) RETURN a.id, b.id"
+        ):
+            dump["edges"]["next"].append({"from_utterance_id": r[0], "to_utterance_id": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (m:Meeting)-[:DISCUSSED]->(t:Topic) RETURN m.id, t.title"
+        ):
+            dump["edges"]["discussed"].append({"meeting_id": r[0], "topic": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (m:Meeting)-[:CONTAINS]->(u:Utterance) RETURN m.id, u.id"
+        ):
+            dump["edges"]["contains"].append({"meeting_id": r[0], "utterance_id": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (m:Meeting)-[:HAS_TASK]->(t:Task) RETURN m.id, t.description"
+        ):
+            dump["edges"]["has_task"].append({"meeting_id": r[0], "task": r[1]})
+        for r in self.execute_cypher(
+            "MATCH (m:Meeting)-[:HAS_DECISION]->(d:Decision) RETURN m.id, d.description"
+        ):
+            dump["edges"]["has_decision"].append({"meeting_id": r[0], "decision": r[1]})
+
+        return dump
+
+    def restore_graph_dump(self, dump: dict) -> None:
+        """export_graph_dump 결과를 DB에 복원."""
+        if not isinstance(dump, dict):
+            raise ValueError("graph dump must be a dict")
+
+        nodes = dump.get("nodes", {})
+        edges = dump.get("edges", {})
+
+        # Nodes 복원
+        for item in nodes.get("meetings", []):
+            meeting_id = item.get("id", "")
+            if not meeting_id:
+                continue
+            self.conn.execute(
+                "MERGE (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
+                {
+                    "id": meeting_id,
+                    "title": item.get("title", ""),
+                    "date": item.get("date", ""),
+                    "src": item.get("source_file", ""),
+                },
+            )
+        for item in nodes.get("people", []):
+            person_name = item.get("name", "")
+            if not person_name:
+                continue
+            self.conn.execute(
+                "MERGE (p:Person {name: $name}) SET p.role = $role",
+                {"name": person_name, "role": item.get("role", "Member")},
+            )
+        for item in nodes.get("topics", []):
+            title = item.get("title", "")
+            if not title:
+                continue
+            self.conn.execute(
+                "MERGE (t:Topic {title: $title}) SET t.summary = $summary",
+                {"title": title, "summary": item.get("summary", "")},
+            )
+        for item in nodes.get("tasks", []):
+            desc = item.get("description", "")
+            if not desc:
+                continue
+            self.conn.execute(
+                "MERGE (t:Task {description: $desc}) SET t.deadline = $due, t.status = $status",
+                {
+                    "desc": desc,
+                    "due": item.get("deadline", "TBD"),
+                    "status": _normalize_task_status(item.get("status", "pending")),
+                },
+            )
+        for item in nodes.get("decisions", []):
+            desc = item.get("description", "")
+            if not desc:
+                continue
+            self.conn.execute(
+                "MERGE (d:Decision {description: $desc})",
+                {"desc": desc},
+            )
+        for item in nodes.get("utterances", []):
+            utterance_id = item.get("id", "")
+            if not utterance_id:
+                continue
+            self.conn.execute(
+                "MERGE (u:Utterance {id: $id}) "
+                "SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
+                {
+                    "id": utterance_id,
+                    "text": item.get("text", ""),
+                    "stime": float(item.get("start", 0.0)),
+                    "etime": float(item.get("end", 0.0)),
+                    "vec": item.get("embedding", [0.0] * self.config.embedding_dim),
+                },
+            )
+
+        # Edges 복원
+        for item in edges.get("proposed", []):
+            if not item.get("person") or not item.get("topic"):
+                continue
+            self.conn.execute(
+                "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
+                {"name": item.get("person", ""), "title": item.get("topic", "")},
+            )
+        for item in edges.get("assigned_to", []):
+            if not item.get("person") or not item.get("task"):
+                continue
+            self.conn.execute(
+                "MATCH (p:Person {name: $name}), (t:Task {description: $task}) MERGE (p)-[:ASSIGNED_TO]->(t)",
+                {"name": item.get("person", ""), "task": item.get("task", "")},
+            )
+        for item in edges.get("resulted_in", []):
+            if not item.get("topic") or not item.get("decision"):
+                continue
+            self.conn.execute(
+                "MATCH (t:Topic {title: $title}), (d:Decision {description: $desc}) MERGE (t)-[:RESULTED_IN]->(d)",
+                {"title": item.get("topic", ""), "desc": item.get("decision", "")},
+            )
+        for item in edges.get("spoke", []):
+            if not item.get("person") or not item.get("utterance_id"):
+                continue
+            self.conn.execute(
+                "MATCH (p:Person {name: $name}), (u:Utterance {id: $uid}) MERGE (p)-[:SPOKE]->(u)",
+                {"name": item.get("person", ""), "uid": item.get("utterance_id", "")},
+            )
+        for item in edges.get("next", []):
+            if not item.get("from_utterance_id") or not item.get("to_utterance_id"):
+                continue
+            self.conn.execute(
+                "MATCH (a:Utterance {id: $a}), (b:Utterance {id: $b}) MERGE (a)-[:NEXT]->(b)",
+                {"a": item.get("from_utterance_id", ""), "b": item.get("to_utterance_id", "")},
+            )
+        for item in edges.get("discussed", []):
+            if not item.get("meeting_id") or not item.get("topic"):
+                continue
+            self.conn.execute(
+                "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
+                {"mid": item.get("meeting_id", ""), "title": item.get("topic", "")},
+            )
+        for item in edges.get("contains", []):
+            if not item.get("meeting_id") or not item.get("utterance_id"):
+                continue
+            self.conn.execute(
+                "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) MERGE (m)-[:CONTAINS]->(u)",
+                {"mid": item.get("meeting_id", ""), "uid": item.get("utterance_id", "")},
+            )
+        for item in edges.get("has_task", []):
+            if not item.get("meeting_id") or not item.get("task"):
+                continue
+            self.conn.execute(
+                "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task}) MERGE (m)-[:HAS_TASK]->(t)",
+                {"mid": item.get("meeting_id", ""), "task": item.get("task", "")},
+            )
+        for item in edges.get("has_decision", []):
+            if not item.get("meeting_id") or not item.get("decision"):
+                continue
+            self.conn.execute(
+                "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $desc}) MERGE (m)-[:HAS_DECISION]->(d)",
+                {"mid": item.get("meeting_id", ""), "desc": item.get("decision", "")},
+            )
 
     def ingest_data(self, analysis_result, meeting_id: str = None):
         """
@@ -185,20 +441,32 @@ class KuzuManager:
             # 3. Task 노드 및 관계
             for task in analysis_result.get("tasks", []):
                 desc_text = task.get('description', 'No Description')
+                status = _normalize_task_status(task.get("status", "pending"))
                 self.conn.execute(
-                    "MERGE (t:Task {description: $task_desc}) ON CREATE SET t.deadline = $due, t.status = 'To Do'",
-                    {"task_desc": desc_text, "due": task.get('deadline', 'TBD')}
+                    "MERGE (t:Task {description: $task_desc}) "
+                    "ON CREATE SET t.deadline = $due, t.status = $status",
+                    {"task_desc": desc_text, "due": task.get('deadline', 'TBD'), "status": status}
                 )
                 if task.get('assignee') and task['assignee'] != 'Unassigned':
                     self.conn.execute(
                         "MATCH (p:Person {name: $name}), (t:Task {description: $task_desc}) MERGE (p)-[:ASSIGNED_TO]->(t)",
                         {"name": task['assignee'], "task_desc": desc_text}
                     )
+                if meeting_id:
+                    self.conn.execute(
+                        "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task_desc}) MERGE (m)-[:HAS_TASK]->(t)",
+                        {"mid": meeting_id, "task_desc": desc_text},
+                    )
 
             # 4. Decision 노드 및 관계
             for d in analysis_result.get("decisions", []):
                 desc_text = d.get('description', 'No Description')
                 self.conn.execute("MERGE (d:Decision {description: $decision_desc})", {"decision_desc": desc_text})
+                if meeting_id:
+                    self.conn.execute(
+                        "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) MERGE (m)-[:HAS_DECISION]->(d)",
+                        {"mid": meeting_id, "decision_desc": desc_text},
+                    )
                 
                 if d.get('related_topic'):
                     self.conn.execute(
@@ -242,37 +510,94 @@ class KuzuManager:
             rows.append(result.get_next())
         return rows
 
-    def get_all_topics(self) -> list[dict]:
-        """모든 Topic 노드 조회"""
-        rows = self.execute_cypher("MATCH (t:Topic) RETURN t.title, t.summary")
+    def get_all_topics(self, limit: int = 20, keyword: str = "") -> list[dict]:
+        """Topic 노드 조회 (선택적으로 keyword/limit 적용)."""
+        if keyword:
+            rows = self.execute_cypher(
+                "MATCH (t:Topic) "
+                "WHERE t.title CONTAINS $kw OR t.summary CONTAINS $kw "
+                "RETURN t.title, t.summary LIMIT $lim",
+                {"kw": keyword, "lim": limit},
+            )
+        else:
+            rows = self.execute_cypher(
+                "MATCH (t:Topic) RETURN t.title, t.summary LIMIT $lim",
+                {"lim": limit},
+            )
         return [{"title": r[0], "summary": r[1]} for r in rows]
 
-    def get_all_tasks(self) -> list[dict]:
-        """모든 Task 노드 + 담당자 조회"""
-        rows = self.execute_cypher(
-            "MATCH (t:Task) OPTIONAL MATCH (p:Person)-[:ASSIGNED_TO]->(t) "
-            "RETURN t.description, t.deadline, t.status, p.name"
-        )
+    def get_all_tasks(self, limit: int = 20, keyword: str = "") -> list[dict]:
+        """Task 노드 + 담당자 조회 (선택적으로 keyword/limit 적용)."""
+        if keyword:
+            rows = self.execute_cypher(
+                "MATCH (t:Task) OPTIONAL MATCH (p:Person)-[:ASSIGNED_TO]->(t) "
+                "WHERE t.description CONTAINS $kw OR t.status CONTAINS $kw OR p.name CONTAINS $kw "
+                "RETURN t.description, t.deadline, t.status, p.name "
+                "LIMIT $lim",
+                {"kw": keyword, "lim": limit},
+            )
+        else:
+            rows = self.execute_cypher(
+                "MATCH (t:Task) OPTIONAL MATCH (p:Person)-[:ASSIGNED_TO]->(t) "
+                "RETURN t.description, t.deadline, t.status, p.name "
+                "LIMIT $lim",
+                {"lim": limit},
+            )
         return [{
             "description": r[0], "deadline": r[1],
             "status": r[2], "assignee": r[3]
         } for r in rows]
 
-    def get_person_tasks(self, person_name: str) -> list[dict]:
+    def get_person_tasks(self, person_name: str, limit: int = 20) -> list[dict]:
         """특정 인물에게 할당된 Task 조회"""
         rows = self.execute_cypher(
-            "MATCH (p:Person {name: $name})-[:ASSIGNED_TO]->(t:Task) RETURN t.description, t.deadline, t.status",
-            {"name": person_name}
+            "MATCH (p:Person {name: $name})-[:ASSIGNED_TO]->(t:Task) "
+            "RETURN t.description, t.deadline, t.status LIMIT $lim",
+            {"name": person_name, "lim": limit},
         )
         return [{"description": r[0], "deadline": r[1], "status": r[2]} for r in rows]
 
-    def get_topic_decisions(self, topic_title: str) -> list[dict]:
+    def get_topic_decisions(self, topic_title: str, limit: int = 20) -> list[dict]:
         """특정 Topic에서 도출된 Decision 조회"""
         rows = self.execute_cypher(
-            "MATCH (t:Topic {title: $title})-[:RESULTED_IN]->(d:Decision) RETURN d.description",
-            {"title": topic_title}
+            "MATCH (t:Topic {title: $title})-[:RESULTED_IN]->(d:Decision) "
+            "RETURN d.description LIMIT $lim",
+            {"title": topic_title, "lim": limit},
         )
         return [{"description": r[0]} for r in rows]
+
+    def get_all_people(self, limit: int = 20, keyword: str = "") -> list[dict]:
+        """Person 노드 조회 (선택적으로 keyword/limit 적용)."""
+        if keyword:
+            rows = self.execute_cypher(
+                "MATCH (p:Person) "
+                "WHERE p.name CONTAINS $kw OR p.role CONTAINS $kw "
+                "RETURN p.name, p.role LIMIT $lim",
+                {"kw": keyword, "lim": limit},
+            )
+        else:
+            rows = self.execute_cypher(
+                "MATCH (p:Person) RETURN p.name, p.role LIMIT $lim",
+                {"lim": limit},
+            )
+        return [{"name": r[0], "role": r[1]} for r in rows]
+
+    def get_all_meetings(self, limit: int = 20, keyword: str = "") -> list[dict]:
+        """Meeting 노드 조회 (선택적으로 keyword/limit 적용)."""
+        if keyword:
+            rows = self.execute_cypher(
+                "MATCH (m:Meeting) "
+                "WHERE m.title CONTAINS $kw OR m.date CONTAINS $kw OR m.source_file CONTAINS $kw "
+                "RETURN m.id, m.title, m.date, m.source_file "
+                "LIMIT $lim",
+                {"kw": keyword, "lim": limit},
+            )
+        else:
+            rows = self.execute_cypher(
+                "MATCH (m:Meeting) RETURN m.id, m.title, m.date, m.source_file LIMIT $lim",
+                {"lim": limit},
+            )
+        return [{"id": r[0], "title": r[1], "date": r[2], "source_file": r[3]} for r in rows]
 
     def get_meeting_summary(self, meeting_id: str) -> dict:
         """특정 회의의 전체 요약 (연결된 Topic, Task, Decision 포함)"""
@@ -290,10 +615,46 @@ class KuzuManager:
             "MATCH (m:Meeting {id: $mid})-[:DISCUSSED]->(t:Topic) RETURN t.title, t.summary",
             {"mid": meeting_id}
         )
+        decisions = self.execute_cypher(
+            "MATCH (m:Meeting {id: $mid})-[:HAS_DECISION]->(d:Decision) "
+            "RETURN DISTINCT d.description",
+            {"mid": meeting_id},
+        )
+        if not decisions:
+            # Legacy fallback: older DBs may not have HAS_DECISION edges.
+            decisions = self.execute_cypher(
+                "MATCH (m:Meeting {id: $mid})-[:DISCUSSED]->(:Topic)-[:RESULTED_IN]->(d:Decision) "
+                "RETURN DISTINCT d.description",
+                {"mid": meeting_id},
+            )
+        people = self.execute_cypher(
+            "MATCH (m:Meeting {id: $mid})-[:CONTAINS]->(:Utterance)<-[:SPOKE]-(p:Person) "
+            "RETURN DISTINCT p.name, p.role",
+            {"mid": meeting_id},
+        )
+        tasks = self.execute_cypher(
+            "MATCH (m:Meeting {id: $mid})-[:HAS_TASK]->(t:Task) "
+            "OPTIONAL MATCH (p:Person)-[:ASSIGNED_TO]->(t) "
+            "RETURN DISTINCT t.description, t.deadline, t.status, p.name",
+            {"mid": meeting_id},
+        )
+        if not tasks:
+            # Legacy fallback: older DBs may not have HAS_TASK edges.
+            tasks = self.execute_cypher(
+                "MATCH (m:Meeting {id: $mid})-[:CONTAINS]->(:Utterance)<-[:SPOKE]-(p:Person)-[:ASSIGNED_TO]->(t:Task) "
+                "RETURN DISTINCT t.description, t.deadline, t.status, p.name",
+                {"mid": meeting_id},
+            )
         return {
             "meeting_id": meeting_id,
             "title": m[0], "date": m[1], "source_file": m[2],
             "topics": [{"title": r[0], "summary": r[1]} for r in topics],
+            "decisions": [{"description": r[0]} for r in decisions],
+            "people": [{"name": r[0], "role": r[1]} for r in people],
+            "tasks": [
+                {"description": r[0], "deadline": r[1], "status": r[2], "assignee": r[3]}
+                for r in tasks
+            ],
         }
 
     # ================================================================

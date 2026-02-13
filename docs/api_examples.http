@@ -1,0 +1,116 @@
+@baseUrl = http://127.0.0.1:8000
+@chatId = demo_chat
+@meetingId = m_20260213_100000_000000
+
+### Health
+GET {{baseUrl}}/health
+Accept: application/json
+
+### Create Chat
+POST {{baseUrl}}/chats
+Content-Type: application/json
+Accept: application/json
+
+{
+  "chat_id": "{{chatId}}"
+}
+
+### List Chats
+GET {{baseUrl}}/chats
+Accept: application/json
+
+### Analyze Audio (multipart)
+POST {{baseUrl}}/analyze
+Content-Type: multipart/form-data; boundary=WebAppBoundary
+Accept: application/json
+
+--WebAppBoundary
+Content-Disposition: form-data; name="chat_id"
+
+{{chatId}}
+--WebAppBoundary
+Content-Disposition: form-data; name="meeting_title"
+
+Phase 5.1 Demo Meeting
+--WebAppBoundary
+Content-Disposition: form-data; name="file"; filename="sample.wav"
+Content-Type: audio/wav
+
+< ./sample.wav
+--WebAppBoundary--
+
+### Agent Query
+POST {{baseUrl}}/agent/query
+Content-Type: application/json
+Accept: application/json
+
+{
+  "chat_id": "{{chatId}}",
+  "question": "이번 회의 핵심 요약을 알려줘."
+}
+
+### List Meetings
+GET {{baseUrl}}/meetings?chat_id={{chatId}}&limit=20
+Accept: application/json
+
+### Get Meeting Detail
+GET {{baseUrl}}/meetings/{{meetingId}}?chat_id={{chatId}}
+Accept: application/json
+
+### Export Graph Dump (compact)
+GET {{baseUrl}}/graph/export?chat_id={{chatId}}&include_embeddings=false
+Accept: application/json
+
+### Export Graph Dump (full with embeddings)
+GET {{baseUrl}}/graph/export?chat_id={{chatId}}&include_embeddings=true
+Accept: application/json
+
+### Import Graph Dump
+POST {{baseUrl}}/graph/import
+Content-Type: application/json
+Accept: application/json
+
+{
+  "chat_id": "{{chatId}}",
+  "graph_dump": {
+    "schema_version": 2,
+    "nodes": {
+      "meetings": [],
+      "people": [],
+      "topics": [],
+      "tasks": [],
+      "decisions": [],
+      "utterances": []
+    },
+    "edges": {
+      "proposed": [],
+      "assigned_to": [],
+      "resulted_in": [],
+      "spoke": [],
+      "next": [],
+      "discussed": [],
+      "contains": [],
+      "has_task": [],
+      "has_decision": []
+    }
+  }
+}
+
+### Update Node (Task)
+PATCH {{baseUrl}}/nodes/update
+Content-Type: application/json
+Accept: application/json
+
+{
+  "chat_id": "{{chatId}}",
+  "node_type": "Task",
+  "node_id": "API 명세서 작성",
+  "fields": {
+    "status": "in_progress",
+    "deadline": "2026-02-20"
+  }
+}
+
+### Reset Chat
+DELETE {{baseUrl}}/chats/{{chatId}}
+Accept: application/json

@@ -17,6 +17,11 @@ def _default_db_base_dir() -> str:
     return os.path.join(project_root, "database", "chats")
 
 
+def _default_api_max_workers() -> int:
+    cpu_count = os.cpu_count() or 2
+    return max(2, min(8, cpu_count))
+
+
 @dataclass
 class SpeakNodeConfig:
     """SpeakNode 전체 설정을 담는 데이터 클래스"""
@@ -42,6 +47,9 @@ class SpeakNodeConfig:
     # --- Agent (Phase 4) ---
     agent_model: str = "qwen2.5:14b"  # Agent LLM (기본: llm_model과 동일)
     agent_max_iterations: int = 10    # Agent 최대 반복 횟수
+
+    # --- API Runtime ---
+    api_max_workers: int = field(default_factory=_default_api_max_workers)
 
     # --- Database (기억) ---
     db_base_dir: str = field(default_factory=_default_db_base_dir)

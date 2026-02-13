@@ -1,102 +1,119 @@
-# 🎙️ SpeakNode
+# SpeakNode
 
-> **AI 기반 로컬 회의록 분석 · 지식 그래프 시각화 · 지능형 에이전트 시스템**
+> 로컬 환경에서 회의 음성을 분석하고, 지식 그래프로 저장/검색/공유하는 AI 시스템
 
-회의 녹음 파일을 업로드하면 **로컬 AI**가 자동으로 분석하여 주제, 결정 사항, 할 일을 추출하고, **지식 그래프**로 시각화합니다. AI Agent에게 자연어로 질문하면 회의 데이터를 검색·요약·이메일 초안 작성까지 해줍니다.
+## Overview
+SpeakNode는 회의 음성 파일을 입력받아 다음 과정을 수행합니다.
 
-> ⚡ **완전 오프라인** — 인터넷·API 키·클라우드 불필요. 모든 데이터가 내 컴퓨터에만 저장됩니다.
+1. STT로 발화를 텍스트와 타임스탬프로 변환
+2. 임베딩 + LLM 추출로 주제/결정/할 일 구조화
+3. Kuzu 그래프 DB에 회의 단위로 적재
+4. Hybrid RAG + Agent로 질의응답/이메일 초안 생성
+5. 그래프 PNG 공유 시 메타데이터를 통해 DB 복원
 
----
+모든 데이터는 로컬에 저장됩니다.
 
-## 주요 기능
+## Key Features
+| 영역 | 기능 |
+|---|---|
+| STT | Faster-Whisper 기반 음성 인식 |
+| Extraction | Ollama + LangChain 기반 구조화 추출 |
+| Graph DB | KuzuDB 노드/관계 + 발화 임베딩 저장 |
+| Search | Vector + Graph 결합 Hybrid RAG |
+| Cypher Search | 자연어 -> 읽기 전용 Cypher 변환 질의 |
+| Agent | 회의 질의, 요약, 이메일 초안 생성 |
+| Sharing | PNG 메타데이터(압축)에 그래프 덤프 포함/복원 |
+| Editing | Streamlit에서 Topic/Task/Person/Meeting 수정 |
+| API | FastAPI 운영형 엔드포인트(Phase 5.1) |
 
-| 기능 | 설명 |
-|------|------|
-| 🎧 **STT** | Faster-Whisper 기반 고속 음성→텍스트 (GPU 가속) |
-| 🧠 **LLM 추출** | Ollama 로컬 모델로 주제/결정/할일 자동 추출 |
-| 🕸️ **지식 그래프** | KuzuDB 그래프 DB + PyVis 시각화 |
-| 🤖 **AI Agent** | Router→Tool→Synthesizer 파이프라인, 6개 도구 |
-| 🔍 **Hybrid RAG** | Vector(의미 검색) + Graph(구조 검색) 결합 |
-| 📧 **이메일 초안** | 회의 데이터 기반 비즈니스 이메일 자동 작성 |
-
----
-
-## 빠른 시작
-
-### 1. 설치
+## Quick Start
+### 1) Install
 ```bash
-# Python 3.10+ 필요
+# Python 3.10+
 git clone <repo-url> && cd SpeakNode
 pip install -r requirements.txt
 
-# Ollama (LLM 엔진) 설치 후 모델 다운로드
-ollama pull gemma3:4b
-ollama pull qwen2.5:14b   # Agent용
+# Ollama 모델 준비
+ollama pull qwen2.5:14b
 ```
 
-### 2. 실행
+### 2) Run
 ```bash
-# Streamlit 테스트 모드
+# Streamlit
 streamlit run interfaces/streamlit_app/app.py
 
-# 또는 FastAPI 서버 모드
+# FastAPI
 uvicorn interfaces.api_server.server:app --host 0.0.0.0 --port 8000
 ```
 
-### 3. 사용
-1. Streamlit UI에서 오디오 파일 업로드
-2. 자동 분석 후 Knowledge Graph 탭에서 결과 확인
-3. **AI Agent 탭**에서 자연어 질문:
-   - _"이번 회의에서 결정된 사항은?"_
-   - _"누가 어떤 일을 맡았어?"_
-   - _"회의 결과를 이메일로 보내줘"_
+## API Highlights (Phase 5.1)
+| Method | Path | 설명 |
+|---|---|---|
+| POST | `/analyze` | 오디오 분석 및 DB 적재 |
+| POST | `/agent/query` | Agent 질의 |
+| GET | `/meetings` | 회의 목록 조회 |
+| GET | `/meetings/{meeting_id}` | 회의 상세 요약 조회 |
+| GET | `/graph/export` | 그래프 덤프 추출 (`include_embeddings` 옵션) |
+| POST | `/graph/import` | 그래프 덤프 복원 |
+| PATCH | `/nodes/update` | 노드 속성 업데이트 |
+| GET/POST/DELETE | `/chats` | 채팅 DB 관리 |
 
----
+Task 상태값 표준:
+- `pending`
+- `in_progress`
+- `done`
+- `blocked`
 
-## 기술 스택
-
-| 역할 | 기술 |
-|------|------|
-| STT | Faster-Whisper (CTranslate2) |
-| LLM | Ollama + LangChain |
-| Agent | LangGraph + ToolRegistry |
-| DB | KuzuDB (Graph + Vector) |
-| 타입 | Pydantic Domain Models |
-| API | FastAPI |
-| UI (Test) | Streamlit |
-| UI (Prod) | Kotlin Compose (예정) |
-
----
-
-## 프로젝트 구조
-
+## Validation Workflow
+### 1) Start API Server
+```bash
+uvicorn interfaces.api_server.server:app --host 0.0.0.0 --port 8000
 ```
+
+### 2) Run Smoke Test
+```bash
+# 분석 없이 기본 엔드포인트 검증
+python scripts/api_smoke_test.py --base-url http://127.0.0.1:8000
+
+# 오디오 포함 검증
+python scripts/api_smoke_test.py \
+  --base-url http://127.0.0.1:8000 \
+  --audio ./sample.wav \
+  --meeting-title "Phase 5.1 Smoke Meeting"
+```
+
+### 3) Manual API Collection
+- 파일: `docs/api_examples.http`
+- VS Code REST Client 또는 JetBrains HTTP Client에서 실행 가능
+
+## Project Structure
+```text
 SpeakNode/
-├── core/                   # AI 핵심 로직
-│   ├── config.py           # 중앙 설정
-│   ├── domain.py           # Pydantic 도메인 모델
-│   ├── pipeline.py         # 실행 파이프라인 (Lazy Loading)
-│   ├── agent.py            # LangGraph Agent
-│   ├── hybrid_rag.py       # Vector + Graph RAG
-│   ├── transcriber.py      # STT + 화자 분리
-│   ├── extractor.py        # LLM 분석 → AnalysisResult
-│   ├── kuzu_manager.py     # KuzuDB CRUD
-│   └── tools/              # ToolRegistry 기반 도구
-│       ├── search_tools.py
-│       ├── meeting_tools.py
-│       ├── email_tools.py
-│       └── general_tools.py
+├── core/
+│   ├── config.py
+│   ├── domain.py
+│   ├── pipeline.py
+│   ├── stt/transcriber.py
+│   ├── llm/extractor.py
+│   ├── db/kuzu_manager.py
+│   ├── shared/share_manager.py
+│   └── agent/
+│       ├── agent.py
+│       ├── hybrid_rag.py
+│       └── tools/
 ├── interfaces/
-│   ├── streamlit_app/      # Streamlit UI
-│   └── api_server/         # FastAPI 서버
+│   ├── streamlit_app/
+│   └── api_server/server.py
+├── scripts/api_smoke_test.py
+├── docs/api_examples.http
 ├── requirements.txt
-└── project.md              # 상세 설계 문서
+└── project.md
 ```
 
-> 📚 상세 설계는 [project.md](project.md)를 참고하세요.
+## Current Status
+- Phase 1~4: 완료
+- Phase 5.1 (FastAPI 고도화): 완료
+- Phase 5.2 (Kotlin Client): 진행 예정
 
----
-
-## 라이선스
-
+## License
 Private Project
