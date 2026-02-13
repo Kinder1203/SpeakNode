@@ -33,7 +33,9 @@ shared_cards/
 *.mp3
 *.wav
 *.m4a
-*.png
+
+# Generated images (shared_cards only — assets/ PNGs are tracked)
+shared_cards/*.png
 
 # Logs and temp files
 *.log
@@ -45,3 +47,6 @@ shared_cards/
 .idea/
 .vscode/
 *.swp
+
+# Gemini agent artifacts
+.gemini/

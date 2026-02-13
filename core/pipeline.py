@@ -1,3 +1,10 @@
+"""
+SpeakNode Pipeline — AI 엔진
+=============================
+Lazy Loading: 각 모듈은 처음 사용될 때만 메모리에 로드됩니다.
+Agent만 사용하는 경우 Whisper 모델(수 GB)을 로드하지 않습니다.
+"""
+
 import os
 import sys
 
@@ -8,43 +15,58 @@ if project_root not in sys.path:
     sys.path.append(project_root)
 
 from core.config import SpeakNodeConfig
-from core.transcriber import Transcriber
-from core.extractor import Extractor
 from core.kuzu_manager import KuzuManager
-from sentence_transformers import SentenceTransformer
+
 
 class SpeakNodeEngine:
     """
-    SpeakNode AI 엔진 (Singleton 패턴)
-    - STT (귀) -> Embedding (이해) -> LLM (지능) -> DB (기억)
+    SpeakNode AI 엔진.
+    @property 기반 지연 로딩으로 사용하지 않는 모듈은 메모리에 올리지 않습니다.
+    - STT (귀) → Embedding (이해) → LLM (지능) → DB (기억)
     """
+
     def __init__(self, config: SpeakNodeConfig = None):
         self.config = config or SpeakNodeConfig()
-        print("🚀 [System] 엔진 초기화 중...")
-        
-        # 1. 청각 모듈 (STT)
-        print("   Init: Loading Whisper (Ear)...")
-        self.transcriber = Transcriber(config=self.config) 
-        
-        # 2. 이해 모듈 (Embedding)
-        print("   Init: Loading Embedding Model (Understanding)...")
-        self.embedder = SentenceTransformer(self.config.embedding_model)
-        
-        # 3. 지능 모듈 (LLM)
-        print("   Init: Loading LLM (Brain)...")
-        self.extractor = Extractor(config=self.config)
-        
-        print("✅ [System] 엔진 준비 완료!")
+        # Private slots — None 이면 아직 로드 안 됨
+        self._transcriber = None
+        self._embedder = None
+        self._extractor = None
+        print("🚀 [System] 엔진 준비 (Lazy Loading — 모듈은 사용 시 로드됩니다)")
+
+    # ================================================================
+    # 🔋 Lazy Properties — 최초 접근 시 1회만 로딩
+    # ================================================================
+
+    @property
+    def transcriber(self):
+        if self._transcriber is None:
+            from core.transcriber import Transcriber
+            print("   ⏳ Loading Whisper (Ear)...")
+            self._transcriber = Transcriber(config=self.config)
+        return self._transcriber
+
+    @property
+    def embedder(self):
+        if self._embedder is None:
+            from sentence_transformers import SentenceTransformer
+            print("   ⏳ Loading Embedding Model (Understanding)...")
+            self._embedder = SentenceTransformer(self.config.embedding_model)
+        return self._embedder
+
+    @property
+    def extractor(self):
+        if self._extractor is None:
+            from core.extractor import Extractor
+            print("   ⏳ Loading LLM (Brain)...")
+            self._extractor = Extractor(config=self.config)
+        return self._extractor
 
     # ================================================================
     # 📌 개별 단계 — Agent가 독립적으로 호출 가능
     # ================================================================
 
     def transcribe(self, audio_path: str) -> list[dict] | None:
-        """
-        Step 1: STT만 수행. 오디오 → 세그먼트 리스트 반환.
-        Agent가 STT 결과만 필요할 때 단독 호출 가능.
-        """
+        """Step 1: STT만 수행. 오디오 → 세그먼트 리스트 반환."""
         if not os.path.exists(audio_path):
             print(f"⚠️ [Error] File not found: {audio_path}")
             return None
@@ -58,11 +80,7 @@ class SpeakNodeEngine:
         return result
 
     def embed(self, segments: list[dict]) -> list[list[float]]:
-        """
-        Step 2: 세그먼트 텍스트를 벡터로 변환.
-        OOM 방지를 위해 batch_size 단위로 분할 인코딩.
-        Agent가 특정 텍스트의 벡터가 필요할 때 단독 호출 가능.
-        """
+        """Step 2: 세그먼트 텍스트를 벡터로 변환. OOM 방지 배치 인코딩."""
         texts = [seg["text"] for seg in segments]
         batch_size = self.config.embedding_batch_size
         all_embeddings = []
@@ -75,21 +93,15 @@ class SpeakNodeEngine:
         return all_embeddings
 
     def extract(self, transcript_text: str) -> dict:
-        """
-        Step 3: 텍스트에서 Topic/Task/Decision 추출.
-        Agent가 텍스트 분석만 필요할 때 단독 호출 가능.
-        """
+        """Step 3: 텍스트에서 Topic/Task/Decision 추출."""
         return self.extractor.extract(transcript_text)
 
     # ================================================================
-    # 🔄 통합 파이프라인 — 전체 흐름 실행 (역호환 유지)
+    # 🔄 통합 파이프라인 — 전체 흐름 실행
     # ================================================================
 
     def process(self, audio_path: str, db_path: str | None = None, meeting_title: str | None = None):
-        """
-        전체 파이프라인: STT → Embedding → LLM → DB 적재
-        기존 호출 방식 완전 호환 + meeting_title 옵션 추가.
-        """
+        """전체 파이프라인: STT → Embedding → LLM → DB 적재"""
         print(f"▶️ [Pipeline] 분석 시작: {os.path.basename(audio_path)}")
 
         # --- Step 1: STT ---
@@ -97,7 +109,6 @@ class SpeakNodeEngine:
         if not segments:
             return None
 
-        # 텍스트 전처리
         transcript_text = " ".join([seg.get("text", "") for seg in segments]).strip()
         if not transcript_text or transcript_text.lower() in ("none", "[]"):
             print(f"⚠️ [Warning] 유효한 텍스트가 없습니다.")
@@ -108,7 +119,6 @@ class SpeakNodeEngine:
         target_db_path = db_path if db_path else self.config.get_chat_db_path()
 
         with KuzuManager(db_path=target_db_path, config=self.config) as db:
-            # Meeting 생성 (제목이 주어진 경우)
             meeting_id = None
             if meeting_title:
                 import datetime
@@ -120,7 +130,6 @@ class SpeakNodeEngine:
                     source_file=os.path.basename(audio_path),
                 )
 
-            # 2-1. 벡터 생성 + Transcript 적재
             embeddings = self.embed(segments)
             db.ingest_transcript(segments, embeddings, meeting_id=meeting_id)
 
@@ -133,6 +142,9 @@ class SpeakNodeEngine:
             db.ingest_data(analysis_data, meeting_id=meeting_id)
 
         print("✅ [Pipeline] 모든 분석 및 저장이 완료되었습니다.")
+        # AnalysisResult → dict 변환 (하위 호환)
+        if hasattr(analysis_data, "to_dict"):
+            return analysis_data.to_dict()
         return analysis_data
 
     # ================================================================
@@ -142,7 +154,7 @@ class SpeakNodeEngine:
     def create_agent(self, db_path: str = None):
         """
         해당 DB에 연결된 AI Agent 인스턴스를 반환합니다.
-        Agent는 Hybrid RAG + LLM으로 질문에 답변하거나 이메일 초안을 작성합니다.
+        Whisper/Embedding 모델을 로딩하지 않고 Agent만 생성합니다.
         """
         from core.agent import SpeakNodeAgent
 

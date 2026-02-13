@@ -3,6 +3,7 @@ from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from core.config import SpeakNodeConfig
+from core.domain import AnalysisResult, Topic, Decision, Task, Person
 
 class Extractor:
     def __init__(self, config: SpeakNodeConfig = None, model_name=None):
@@ -47,7 +48,7 @@ Hard rules:
         pattern = r"(할\s*일|액션\s*아이템|담당|요청|부탁|까지\s*(완료|제출|정리|작성|준비)|하겠습니다|진행하겠습니다|TODO|to do)"
         return re.search(pattern, text, flags=re.IGNORECASE) is not None
 
-    def _normalize(self, raw: dict, transcript: str) -> dict:
+    def _normalize(self, raw: dict, transcript: str) -> AnalysisResult:
         data = raw if isinstance(raw, dict) else {}
 
         # 1. Topics 처리 (proposer 추가)
@@ -59,11 +60,7 @@ Hard rules:
             proposer = str(item.get("proposer", "Unknown")).strip()  # [New]
             
             if not title: continue
-            topics.append({
-                "title": title,
-                "summary": summary,
-                "proposer": proposer
-            })
+            topics.append(Topic(title=title, summary=summary, proposer=proposer))
 
         # 2. Decisions 처리 (related_topic 추가)
         decisions = []
@@ -77,10 +74,7 @@ Hard rules:
                 related_topic = topics[0]['title']
 
             if not description: continue
-            decisions.append({
-                "description": description,
-                "related_topic": related_topic
-            })
+            decisions.append(Decision(description=description, related_topic=related_topic))
 
         # 3. Tasks 처리
         tasks = []
@@ -90,24 +84,20 @@ Hard rules:
             assignee = str(item.get("assignee", "Unassigned")).strip() or "Unassigned"
             
             if not description: continue
-            tasks.append({
-                "description": description,
-                "assignee": assignee,
-                "status": "pending",
-            })
+            tasks.append(Task(description=description, assignee=assignee, status="pending"))
 
         # 4. People 자동 생성 (모든 등장인물 수집) [New]
         people_set = set()
         # 토픽 제안자 수집
         for t in topics:
-            if t['proposer'] and t['proposer'] not in ["Unknown", "None"]:
-                people_set.add(t['proposer'])
+            if t.proposer and t.proposer not in ["Unknown", "None"]:
+                people_set.add(t.proposer)
         # 업무 담당자 수집
         for t in tasks:
-            if t['assignee'] and t['assignee'] not in ["Unassigned", "None"]:
-                people_set.add(t['assignee'])
+            if t.assignee and t.assignee not in ["Unassigned", "None"]:
+                people_set.add(t.assignee)
         
-        people_list = [{"name": p, "role": "Member"} for p in people_set]
+        people_list = [Person(name=p, role="Member") for p in people_set]
 
         # Conservative safety-net
         if not self._has_decision_signal(transcript):
@@ -115,15 +105,15 @@ Hard rules:
         if not self._has_task_signal(transcript):
             tasks = []
 
-        # 최종 반환 시 people 포함
-        return {
-            "topics": topics, 
-            "decisions": decisions, 
-            "tasks": tasks,
-            "people": people_list
-        }
+        return AnalysisResult(
+            topics=topics,
+            decisions=decisions,
+            tasks=tasks,
+            people=people_list,
+        )
         
-    def extract(self, transcript):
+    def extract(self, transcript: str) -> AnalysisResult:
+        """LLM으로 회의 내용 분석. 결과를 AnalysisResult 모델로 반환합니다."""
         try:
             raw = self.chain.invoke({"transcript": transcript})
             return self._normalize(raw, transcript)

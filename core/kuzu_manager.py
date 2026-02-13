@@ -148,11 +148,14 @@ class KuzuManager:
         
         return ingested_count
 
-    def ingest_data(self, analysis_result: dict, meeting_id: str = None):
+    def ingest_data(self, analysis_result, meeting_id: str = None):
         """
-        LLM 분석 결과(요약, 할일 등) 적재
-        - meeting_id: 있으면 Topic을 Meeting에 DISCUSSED로 연결
+        LLM 분석 결과(요약, 할일 등) 적재.
+        analysis_result: dict 또는 AnalysisResult 모델 모두 허용.
         """
+        # AnalysisResult Pydantic 모델 ↔ dict 역호환
+        if hasattr(analysis_result, "to_dict"):
+            analysis_result = analysis_result.to_dict()
         try:
             # 1. Person 노드 (people 리스트가 있다면)
             for p in analysis_result.get("people", []):

@@ -19,6 +19,9 @@ langgraph>=1.0.0
 # --- Core: Database (기억) ---
 kuzu>=0.11.0
 
+# --- Core: Type Safety ---
+pydantic>=2.0.0
+
 # --- Interface: Streamlit (데모/테스트) ---
 streamlit>=1.50.0
 pyvis>=0.3.0
@@ -29,4 +32,9 @@ Pillow>=11.0.0
 # --- Interface: FastAPI (배포 서버) ---
 fastapi>=0.128.0
 uvicorn>=0.40.0
-pydantic>=2.0.0
+
+# --- Optional: Speaker Diarization ---
+# pyannote.audio>=3.3.0  # pip install pyannote.audio (HuggingFace 토큰 필요)
+
+# --- Dev/Test ---
+# pytest>=8.0.0
