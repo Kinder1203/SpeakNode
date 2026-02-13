@@ -22,6 +22,10 @@ def _default_api_max_workers() -> int:
     return max(2, min(8, cpu_count))
 
 
+def _default_api_agent_workers() -> int:
+    return _default_api_max_workers()
+
+
 @dataclass
 class SpeakNodeConfig:
     """SpeakNode 전체 설정을 담는 데이터 클래스"""
@@ -50,6 +54,10 @@ class SpeakNodeConfig:
 
     # --- API Runtime ---
     api_max_workers: int = field(default_factory=_default_api_max_workers)
+    api_analyze_workers: int = 1
+    api_agent_workers: int = field(default_factory=_default_api_agent_workers)
+    api_graph_import_max_bytes: int = 25 * 1024 * 1024
+    api_graph_import_max_elements: int = 200_000
 
     # --- Database (기억) ---
     db_base_dir: str = field(default_factory=_default_db_base_dir)

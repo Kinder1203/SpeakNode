@@ -3,6 +3,7 @@ import os
 from core.config import SpeakNodeConfig
 
 ALLOWED_TASK_STATUSES = {"pending", "in_progress", "done", "blocked"}
+SCOPED_VALUE_SEPARATOR = "::"
 
 
 def _normalize_task_status(raw: str) -> str:
@@ -16,6 +17,34 @@ def _normalize_task_status(raw: str) -> str:
     }
     normalized = aliases.get(status, status)
     return normalized if normalized in ALLOWED_TASK_STATUSES else "pending"
+
+
+def build_scoped_value(meeting_id: str | None, value: str) -> str:
+    """회의 단위 충돌 방지를 위한 스코프 키 생성."""
+    clean = str(value or "").strip()
+    if not clean:
+        return ""
+    if not meeting_id:
+        return clean
+    return f"{meeting_id}{SCOPED_VALUE_SEPARATOR}{clean}"
+
+
+def decode_scoped_value(value: str) -> str:
+    """스코프 키에서 사용자 표시용 원본 값을 추출."""
+    raw = str(value or "")
+    if SCOPED_VALUE_SEPARATOR not in raw:
+        return raw
+    _, plain = raw.split(SCOPED_VALUE_SEPARATOR, 1)
+    return plain
+
+
+def extract_scope_from_value(value: str) -> str:
+    """스코프 키에서 meeting_id를 추출."""
+    raw = str(value or "")
+    if SCOPED_VALUE_SEPARATOR not in raw:
+        return ""
+    meeting_id, _ = raw.split(SCOPED_VALUE_SEPARATOR, 1)
+    return meeting_id if meeting_id.startswith("m_") else ""
 
 
 class KuzuManager:
@@ -413,6 +442,8 @@ class KuzuManager:
         if hasattr(analysis_result, "to_dict"):
             analysis_result = analysis_result.to_dict()
         try:
+            topic_keys_by_plain: dict[str, str] = {}
+
             # 1. Person 노드 (people 리스트가 있다면)
             for p in analysis_result.get("people", []):
                 self.conn.execute(
@@ -422,56 +453,71 @@ class KuzuManager:
 
             # 2. Topic 노드 및 관계
             for t in analysis_result.get("topics", []):
+                plain_title = str(t.get("title", "")).strip()
+                scoped_title = build_scoped_value(meeting_id, plain_title)
+                if not scoped_title:
+                    continue
+                topic_keys_by_plain[plain_title] = scoped_title
                 self.conn.execute(
                     "MERGE (t:Topic {title: $title}) ON CREATE SET t.summary = $summary",
-                    {"title": t['title'], "summary": t.get('summary', '')}
+                    {"title": scoped_title, "summary": t.get('summary', '')}
                 )
                 if t.get('proposer') and t['proposer'] != 'Unknown':
                     self.conn.execute(
                         "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
-                        {"name": t['proposer'], "title": t['title']}
+                        {"name": t['proposer'], "title": scoped_title}
                     )
                 # Meeting ↔ Topic 연결 (DISCUSSED)
                 if meeting_id:
                     self.conn.execute(
                         "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
-                        {"mid": meeting_id, "title": t['title']}
+                        {"mid": meeting_id, "title": scoped_title}
                     )
 
             # 3. Task 노드 및 관계
             for task in analysis_result.get("tasks", []):
-                desc_text = task.get('description', 'No Description')
+                desc_text = str(task.get('description', '')).strip() or "No Description"
+                scoped_desc = build_scoped_value(meeting_id, desc_text)
                 status = _normalize_task_status(task.get("status", "pending"))
                 self.conn.execute(
                     "MERGE (t:Task {description: $task_desc}) "
                     "ON CREATE SET t.deadline = $due, t.status = $status",
-                    {"task_desc": desc_text, "due": task.get('deadline', 'TBD'), "status": status}
+                    {"task_desc": scoped_desc, "due": task.get('deadline', 'TBD'), "status": status}
                 )
                 if task.get('assignee') and task['assignee'] != 'Unassigned':
                     self.conn.execute(
+                        "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
+                        {"name": task['assignee']},
+                    )
+                    self.conn.execute(
                         "MATCH (p:Person {name: $name}), (t:Task {description: $task_desc}) MERGE (p)-[:ASSIGNED_TO]->(t)",
-                        {"name": task['assignee'], "task_desc": desc_text}
+                        {"name": task['assignee'], "task_desc": scoped_desc}
                     )
                 if meeting_id:
                     self.conn.execute(
                         "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task_desc}) MERGE (m)-[:HAS_TASK]->(t)",
-                        {"mid": meeting_id, "task_desc": desc_text},
+                        {"mid": meeting_id, "task_desc": scoped_desc},
                     )
 
             # 4. Decision 노드 및 관계
             for d in analysis_result.get("decisions", []):
-                desc_text = d.get('description', 'No Description')
-                self.conn.execute("MERGE (d:Decision {description: $decision_desc})", {"decision_desc": desc_text})
+                desc_text = str(d.get('description', '')).strip() or "No Description"
+                scoped_desc = build_scoped_value(meeting_id, desc_text)
+                self.conn.execute("MERGE (d:Decision {description: $decision_desc})", {"decision_desc": scoped_desc})
                 if meeting_id:
                     self.conn.execute(
                         "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) MERGE (m)-[:HAS_DECISION]->(d)",
-                        {"mid": meeting_id, "decision_desc": desc_text},
+                        {"mid": meeting_id, "decision_desc": scoped_desc},
                     )
                 
                 if d.get('related_topic'):
+                    plain_related_topic = str(d.get("related_topic", "")).strip()
+                    resolved_topic_key = topic_keys_by_plain.get(plain_related_topic)
+                    if resolved_topic_key is None:
+                        resolved_topic_key = build_scoped_value(meeting_id, plain_related_topic)
                     self.conn.execute(
                         "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) MERGE (t)-[:RESULTED_IN]->(d)",
-                        {"title": d['related_topic'], "decision_desc": desc_text}
+                        {"title": resolved_topic_key, "decision_desc": scoped_desc}
                     )
 
             print(f"🎉 지식 그래프(Knowledge Graph) 적재 완료!")
@@ -524,7 +570,15 @@ class KuzuManager:
                 "MATCH (t:Topic) RETURN t.title, t.summary LIMIT $lim",
                 {"lim": limit},
             )
-        return [{"title": r[0], "summary": r[1]} for r in rows]
+        return [
+            {
+                "id": r[0],
+                "title": decode_scoped_value(r[0]),
+                "summary": r[1],
+                "meeting_id": extract_scope_from_value(r[0]),
+            }
+            for r in rows
+        ]
 
     def get_all_tasks(self, limit: int = 20, keyword: str = "") -> list[dict]:
         """Task 노드 + 담당자 조회 (선택적으로 keyword/limit 적용)."""
@@ -544,8 +598,12 @@ class KuzuManager:
                 {"lim": limit},
             )
         return [{
-            "description": r[0], "deadline": r[1],
-            "status": r[2], "assignee": r[3]
+            "id": r[0],
+            "description": decode_scoped_value(r[0]),
+            "deadline": r[1],
+            "status": _normalize_task_status(r[2]),
+            "assignee": r[3],
+            "meeting_id": extract_scope_from_value(r[0]),
         } for r in rows]
 
     def get_person_tasks(self, person_name: str, limit: int = 20) -> list[dict]:
@@ -555,16 +613,52 @@ class KuzuManager:
             "RETURN t.description, t.deadline, t.status LIMIT $lim",
             {"name": person_name, "lim": limit},
         )
-        return [{"description": r[0], "deadline": r[1], "status": r[2]} for r in rows]
+        return [{
+            "id": r[0],
+            "description": decode_scoped_value(r[0]),
+            "deadline": r[1],
+            "status": _normalize_task_status(r[2]),
+            "meeting_id": extract_scope_from_value(r[0]),
+        } for r in rows]
 
     def get_topic_decisions(self, topic_title: str, limit: int = 20) -> list[dict]:
         """특정 Topic에서 도출된 Decision 조회"""
-        rows = self.execute_cypher(
-            "MATCH (t:Topic {title: $title})-[:RESULTED_IN]->(d:Decision) "
-            "RETURN d.description LIMIT $lim",
-            {"title": topic_title, "lim": limit},
+        target = (topic_title or "").strip()
+        if not target:
+            return []
+
+        candidate_rows = self.execute_cypher(
+            "MATCH (t:Topic) RETURN t.title LIMIT 5000"
         )
-        return [{"description": r[0]} for r in rows]
+        matching_topic_keys = [
+            row[0]
+            for row in candidate_rows
+            if row[0] == target or decode_scoped_value(row[0]) == target
+        ]
+        if not matching_topic_keys:
+            return []
+
+        decisions = []
+        seen: set[str] = set()
+        for topic_key in matching_topic_keys:
+            rows = self.execute_cypher(
+                "MATCH (t:Topic {title: $title})-[:RESULTED_IN]->(d:Decision) "
+                "RETURN d.description LIMIT $lim",
+                {"title": topic_key, "lim": limit},
+            )
+            for r in rows:
+                raw_desc = r[0]
+                if raw_desc in seen:
+                    continue
+                seen.add(raw_desc)
+                decisions.append({
+                    "id": raw_desc,
+                    "description": decode_scoped_value(raw_desc),
+                    "meeting_id": extract_scope_from_value(raw_desc),
+                })
+                if len(decisions) >= limit:
+                    return decisions
+        return decisions
 
     def get_all_people(self, limit: int = 20, keyword: str = "") -> list[dict]:
         """Person 노드 조회 (선택적으로 keyword/limit 적용)."""
@@ -648,11 +742,33 @@ class KuzuManager:
         return {
             "meeting_id": meeting_id,
             "title": m[0], "date": m[1], "source_file": m[2],
-            "topics": [{"title": r[0], "summary": r[1]} for r in topics],
-            "decisions": [{"description": r[0]} for r in decisions],
+            "topics": [
+                {
+                    "id": r[0],
+                    "title": decode_scoped_value(r[0]),
+                    "summary": r[1],
+                    "meeting_id": extract_scope_from_value(r[0]),
+                }
+                for r in topics
+            ],
+            "decisions": [
+                {
+                    "id": r[0],
+                    "description": decode_scoped_value(r[0]),
+                    "meeting_id": extract_scope_from_value(r[0]),
+                }
+                for r in decisions
+            ],
             "people": [{"name": r[0], "role": r[1]} for r in people],
             "tasks": [
-                {"description": r[0], "deadline": r[1], "status": r[2], "assignee": r[3]}
+                {
+                    "id": r[0],
+                    "description": decode_scoped_value(r[0]),
+                    "deadline": r[1],
+                    "status": _normalize_task_status(r[2]),
+                    "assignee": r[3],
+                    "meeting_id": extract_scope_from_value(r[0]),
+                }
                 for r in tasks
             ],
         }

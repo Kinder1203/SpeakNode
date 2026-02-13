@@ -7,6 +7,7 @@ Agent만 사용하는 경우 Whisper 모델(수 GB)을 로드하지 않습니다
 
 import datetime
 import os
+import threading
 
 from core.config import SpeakNodeConfig
 from core.db.kuzu_manager import KuzuManager
@@ -25,6 +26,12 @@ class SpeakNodeEngine:
         self._transcriber = None
         self._embedder = None
         self._extractor = None
+        self._transcriber_init_lock = threading.Lock()
+        self._embedder_init_lock = threading.Lock()
+        self._extractor_init_lock = threading.Lock()
+        self._transcriber_run_lock = threading.Lock()
+        self._embedder_run_lock = threading.Lock()
+        self._extractor_run_lock = threading.Lock()
         print("🚀 [System] 엔진 준비 (Lazy Loading — 모듈은 사용 시 로드됩니다)")
 
     # ================================================================
@@ -34,25 +41,31 @@ class SpeakNodeEngine:
     @property
     def transcriber(self):
         if self._transcriber is None:
-            from core.stt.transcriber import Transcriber
-            print("   ⏳ Loading Whisper (Ear)...")
-            self._transcriber = Transcriber(config=self.config)
+            with self._transcriber_init_lock:
+                if self._transcriber is None:
+                    from core.stt.transcriber import Transcriber
+                    print("   ⏳ Loading Whisper (Ear)...")
+                    self._transcriber = Transcriber(config=self.config)
         return self._transcriber
 
     @property
     def embedder(self):
         if self._embedder is None:
-            from sentence_transformers import SentenceTransformer
-            print("   ⏳ Loading Embedding Model (Understanding)...")
-            self._embedder = SentenceTransformer(self.config.embedding_model)
+            with self._embedder_init_lock:
+                if self._embedder is None:
+                    from sentence_transformers import SentenceTransformer
+                    print("   ⏳ Loading Embedding Model (Understanding)...")
+                    self._embedder = SentenceTransformer(self.config.embedding_model)
         return self._embedder
 
     @property
     def extractor(self):
         if self._extractor is None:
-            from core.llm.extractor import Extractor
-            print("   ⏳ Loading LLM (Brain)...")
-            self._extractor = Extractor(config=self.config)
+            with self._extractor_init_lock:
+                if self._extractor is None:
+                    from core.llm.extractor import Extractor
+                    print("   ⏳ Loading LLM (Brain)...")
+                    self._extractor = Extractor(config=self.config)
         return self._extractor
 
     # ================================================================
@@ -66,7 +79,8 @@ class SpeakNodeEngine:
             return None
 
         print(f"🎧 [Pipeline] STT 시작: {os.path.basename(audio_path)}")
-        result = self.transcriber.transcribe(audio_path)
+        with self._transcriber_run_lock:
+            result = self.transcriber.transcribe(audio_path)
 
         if not result:
             print("❌ [Pipeline] STT 실패 또는 결과 없음.")
@@ -79,16 +93,18 @@ class SpeakNodeEngine:
         batch_size = self.config.embedding_batch_size
         all_embeddings = []
 
-        for i in range(0, len(texts), batch_size):
-            batch = texts[i : i + batch_size]
-            batch_vectors = self.embedder.encode(batch).tolist()
-            all_embeddings.extend(batch_vectors)
+        with self._embedder_run_lock:
+            for i in range(0, len(texts), batch_size):
+                batch = texts[i : i + batch_size]
+                batch_vectors = self.embedder.encode(batch).tolist()
+                all_embeddings.extend(batch_vectors)
 
         return all_embeddings
 
     def extract(self, transcript_text: str):
         """Step 3: 텍스트에서 Topic/Task/Decision 추출."""
-        return self.extractor.extract(transcript_text)
+        with self._extractor_run_lock:
+            return self.extractor.extract(transcript_text)
 
     # ================================================================
     # 🔄 통합 파이프라인 — 전체 흐름 실행

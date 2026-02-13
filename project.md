@@ -113,6 +113,8 @@ SpeakNode/
 - 노드 속성 업데이트 API 제공
 - 스모크 테스트 스크립트 제공
 - HTTP 요청 컬렉션 제공
+- 그래프 import 보호(크기/요소 제한) 적용
+- 회의 스코프 키 기반 엔티티 충돌 방지 적용
 
 ## 8. Roadmap Status
 - Phase 1 Foundation: Complete

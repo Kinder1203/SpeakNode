@@ -64,6 +64,11 @@ Task 상태값 표준:
 - `done`
 - `blocked`
 
+데이터 정합성 정책:
+- Topic/Task/Decision은 내부적으로 회의 스코프 키(`meeting_id::value`)를 사용해 회의 간 충돌을 방지합니다.
+- API `/nodes/update`는 표시값으로도 시도하며, 중복 시 raw scoped id를 요구합니다.
+- API `/graph/import`는 payload 크기/요소 수 제한으로 보호됩니다.
+
 ## Validation Workflow
 ### 1) Start API Server
 ```bash

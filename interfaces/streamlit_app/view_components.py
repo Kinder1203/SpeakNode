@@ -11,7 +11,11 @@ from PIL import Image
 from PIL.PngImagePlugin import PngInfo
 import io
 import json
-from core.db.kuzu_manager import KuzuManager
+from core.db.kuzu_manager import (
+    KuzuManager,
+    decode_scoped_value,
+    extract_scope_from_value,
+)
 
 TASK_STATUS_OPTIONS = ["pending", "in_progress", "done", "blocked"]
 
@@ -33,6 +37,14 @@ def _encode_payload_for_png(payload: dict) -> str:
     raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     compressed = zlib.compress(raw, level=9)
     return base64.b64encode(compressed).decode("ascii")
+
+
+def _format_scoped_label(raw_value: str) -> str:
+    plain = decode_scoped_value(raw_value)
+    meeting_scope = extract_scope_from_value(raw_value)
+    if meeting_scope:
+        return f"{plain} ({meeting_scope})"
+    return plain
 
 
 def set_korean_font():
@@ -94,11 +106,29 @@ def render_graph_view(db_path):
                 title=person_role or "Member",
             )
         for (title,) in _fetch_rows(conn, "MATCH (t:Topic) RETURN t.title"):
-            net.add_node(f"topic::{title}", label=title, color="#9b59b6", shape="box")
+            net.add_node(
+                f"topic::{title}",
+                label=decode_scoped_value(title),
+                color="#9b59b6",
+                shape="box",
+                title=_format_scoped_label(title),
+            )
         for (desc,) in _fetch_rows(conn, "MATCH (d:Decision) RETURN d.description"):
-            net.add_node(f"decision::{desc}", label=desc, color="#f1c40f", shape="triangle")
+            net.add_node(
+                f"decision::{desc}",
+                label=decode_scoped_value(desc),
+                color="#f1c40f",
+                shape="triangle",
+                title=_format_scoped_label(desc),
+            )
         for (desc,) in _fetch_rows(conn, "MATCH (t:Task) RETURN t.description"):
-            net.add_node(f"task::{desc}", label=desc, color="#3498db", shape="dot")
+            net.add_node(
+                f"task::{desc}",
+                label=decode_scoped_value(desc),
+                color="#3498db",
+                shape="dot",
+                title=_format_scoped_label(desc),
+            )
 
         for topic, decision in _fetch_rows(
             conn,
@@ -155,7 +185,12 @@ def render_graph_editor(db_path):
                 st.info("수정할 Topic이 없습니다.")
                 return
             topic_map = {r[0]: (r[1] or "") for r in rows}
-            selected = st.selectbox("Topic 선택", list(topic_map.keys()), key="editor_topic_target")
+            selected = st.selectbox(
+                "Topic 선택",
+                list(topic_map.keys()),
+                key="editor_topic_target",
+                format_func=_format_scoped_label,
+            )
             summary_key = f"editor_topic_summary::{selected}"
             new_summary = st.text_area(
                 "요약(summary)",
@@ -187,7 +222,12 @@ def render_graph_editor(db_path):
                 }
                 for r in rows
             }
-            selected = st.selectbox("Task 선택", list(task_map.keys()), key="editor_task_target")
+            selected = st.selectbox(
+                "Task 선택",
+                list(task_map.keys()),
+                key="editor_task_target",
+                format_func=_format_scoped_label,
+            )
             deadline_key = f"editor_task_deadline::{selected}"
             status_key = f"editor_task_status::{selected}"
             assignee_key = f"editor_task_assignee::{selected}"
@@ -300,19 +340,21 @@ def generate_static_graph_image(db_path, analysis_json, include_embeddings=False
         while nodes_t.has_next():
             row = nodes_t.get_next()
             G.add_node(row[0], color="#9b59b6")
-            labels[row[0]] = row[0]
+            labels[row[0]] = decode_scoped_value(row[0])
 
         nodes_d = conn.execute("MATCH (d:Decision) RETURN d.description")
         while nodes_d.has_next():
             row = nodes_d.get_next()
-            label = (row[0][:10] + "..") if len(row[0]) > 10 else row[0]
+            plain = decode_scoped_value(row[0])
+            label = (plain[:10] + "..") if len(plain) > 10 else plain
             G.add_node(row[0], color="#f1c40f")
             labels[row[0]] = label
 
         nodes_task = conn.execute("MATCH (t:Task) RETURN t.description")
         while nodes_task.has_next():
             row = nodes_task.get_next()
-            label = (row[0][:10] + "..") if len(row[0]) > 10 else row[0]
+            plain = decode_scoped_value(row[0])
+            label = (plain[:10] + "..") if len(plain) > 10 else plain
             G.add_node(row[0], color="#3498db")
             labels[row[0]] = label
 

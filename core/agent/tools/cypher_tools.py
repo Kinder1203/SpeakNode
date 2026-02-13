@@ -5,6 +5,7 @@ Cypher 도구: 자연어를 읽기 전용 Cypher로 변환해 구조 질의 실�
 from __future__ import annotations
 
 from core.agent.tools import default_registry as registry
+from core.db.kuzu_manager import decode_scoped_value
 
 
 def _to_int(value, default: int) -> int:
@@ -29,7 +30,14 @@ def search_by_cypher(args: dict, db, rag) -> str:
         return f"Cypher 검색 실패: {result.get('error', 'unknown error')}"
 
     rows = result.get("rows", [])
-    rendered_rows = "\n".join(f"- {row}" for row in rows[:limit]) if rows else "(결과 없음)"
+    rendered = []
+    for row in rows[:limit]:
+        normalized_row = [
+            decode_scoped_value(cell) if isinstance(cell, str) else cell
+            for cell in row
+        ]
+        rendered.append(f"- {normalized_row}")
+    rendered_rows = "\n".join(rendered) if rendered else "(결과 없음)"
     return f"""[Generated Cypher]
 {result.get("query", "")}
 

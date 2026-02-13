@@ -6,6 +6,9 @@ from PIL import Image, ImageDraw, ImageFont
 from PIL.PngImagePlugin import PngInfo
 import os
 
+MAX_EMBEDDED_PAYLOAD_BYTES = 32 * 1024 * 1024
+
+
 class ShareManager:
     def __init__(self, output_dir="../shared_cards"):
         if not os.path.exists(output_dir):
@@ -105,5 +108,13 @@ class ShareManager:
     @staticmethod
     def _decode_payload(encoded: str):
         compressed = base64.b64decode(encoded.encode("ascii"))
-        raw = zlib.decompress(compressed).decode("utf-8")
-        return json.loads(raw)
+        decompressor = zlib.decompressobj()
+        raw_part = decompressor.decompress(compressed, MAX_EMBEDDED_PAYLOAD_BYTES + 1)
+        if len(raw_part) > MAX_EMBEDDED_PAYLOAD_BYTES:
+            raise ValueError("Embedded payload exceeds maximum allowed size")
+        if decompressor.unconsumed_tail:
+            raise ValueError("Embedded payload is too large or malformed")
+        raw_part += decompressor.flush()
+        if len(raw_part) > MAX_EMBEDDED_PAYLOAD_BYTES:
+            raise ValueError("Embedded payload exceeds maximum allowed size")
+        return json.loads(raw_part.decode("utf-8"))

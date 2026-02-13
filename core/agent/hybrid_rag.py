@@ -23,6 +23,8 @@ FORBIDDEN_CYPHER_TOKENS = (
     "ALTER",
     "INSERT",
     "REMOVE",
+    "CALL",
+    "COPY",
 )
 
 
@@ -90,6 +92,8 @@ Relations:
 - (Meeting)-[:HAS_DECISION]->(Decision)
 
 Use meeting-aware relations (HAS_TASK, HAS_DECISION, DISCUSSED, CONTAINS) when possible.
+Topic.title / Task.description / Decision.description can be stored as "<meeting_id>::<plain_text>".
+For user-facing keyword filtering, prefer CONTAINS over exact equality.
 """
         response = self.cypher_llm.invoke(
             [
@@ -113,6 +117,8 @@ Use meeting-aware relations (HAS_TASK, HAS_DECISION, DISCUSSED, CONTAINS) when p
             return False, "허용되지 않은 Cypher 시작 절입니다. (MATCH/OPTIONAL MATCH/WITH만 허용)"
 
         upper_query = query.upper()
+        if ";" in query:
+            return False, "여러 문장을 포함한 Cypher는 허용되지 않습니다."
         if "RETURN" not in upper_query:
             return False, "Cypher 쿼리에 RETURN 절이 없습니다."
 
