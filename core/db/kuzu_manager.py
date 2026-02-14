@@ -170,13 +170,21 @@ class KuzuManager:
                     vector = embeddings[i]
                     
                     self.conn.execute(
-                        "MERGE (u:Utterance {id: $id}) SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
+                        "MERGE (u:Utterance {id: $id})",
+                        {"id": u_id}
+                    )
+                    self.conn.execute(
+                        "MATCH (u:Utterance {id: $id}) SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
                         {"id": u_id, "text": text, "stime": start, "etime": end, "vec": vector}
                     )
                     
                     speaker_name = seg.get('speaker', 'Unknown')
                     self.conn.execute(
-                        "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
+                        "MERGE (p:Person {name: $name})",
+                        {"name": speaker_name}
+                    )
+                    self.conn.execute(
+                        "MATCH (p:Person {name: $name}) SET p.role = 'Member'",
                         {"name": speaker_name}
                     )
                     self.conn.execute(
@@ -349,7 +357,11 @@ class KuzuManager:
                 if not meeting_id:
                     continue
                 self.conn.execute(
-                    "MERGE (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
+                    "MERGE (m:Meeting {id: $id})",
+                    {"id": meeting_id},
+                )
+                self.conn.execute(
+                    "MATCH (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
                     {
                         "id": meeting_id,
                         "title": item.get("title", ""),
@@ -362,7 +374,11 @@ class KuzuManager:
                 if not person_name:
                     continue
                 self.conn.execute(
-                    "MERGE (p:Person {name: $name}) SET p.role = $role",
+                    "MERGE (p:Person {name: $name})",
+                    {"name": person_name},
+                )
+                self.conn.execute(
+                    "MATCH (p:Person {name: $name}) SET p.role = $role",
                     {"name": person_name, "role": item.get("role", "Member")},
                 )
             for item in nodes.get("topics", []):
@@ -370,7 +386,11 @@ class KuzuManager:
                 if not title:
                     continue
                 self.conn.execute(
-                    "MERGE (t:Topic {title: $title}) SET t.summary = $summary",
+                    "MERGE (t:Topic {title: $title})",
+                    {"title": title},
+                )
+                self.conn.execute(
+                    "MATCH (t:Topic {title: $title}) SET t.summary = $summary",
                     {"title": title, "summary": item.get("summary", "")},
                 )
             for item in nodes.get("tasks", []):
@@ -378,7 +398,11 @@ class KuzuManager:
                 if not task_desc:
                     continue
                 self.conn.execute(
-                    "MERGE (t:Task {description: $task_desc}) SET t.deadline = $due, t.status = $status",
+                    "MERGE (t:Task {description: $task_desc})",
+                    {"task_desc": task_desc},
+                )
+                self.conn.execute(
+                    "MATCH (t:Task {description: $task_desc}) SET t.deadline = $due, t.status = $status",
                     {
                         "task_desc": task_desc,
                         "due": item.get("deadline", "TBD"),
@@ -402,8 +426,11 @@ class KuzuManager:
                     has_embeddings_missing = True
                     embedding = [0.0] * self.config.embedding_dim
                 self.conn.execute(
-                    "MERGE (u:Utterance {id: $id}) "
-                    "SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
+                    "MERGE (u:Utterance {id: $id})",
+                    {"id": utterance_id},
+                )
+                self.conn.execute(
+                    "MATCH (u:Utterance {id: $id}) SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
                     {
                         "id": utterance_id,
                         "text": item.get("text", ""),
@@ -484,11 +511,15 @@ class KuzuManager:
                 if not ent_name:
                     continue
                 self.conn.execute(
-                    "MERGE (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $desc",
+                    "MERGE (e:Entity {name: $name})",
+                    {"name": ent_name},
+                )
+                self.conn.execute(
+                    "MATCH (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $edescription",
                     {
                         "name": ent_name,
                         "etype": item.get("entity_type", "concept"),
-                        "desc": item.get("description", ""),
+                        "edescription": item.get("description", ""),
                     },
                 )
             for item in edges.get("related_to", []):
@@ -536,7 +567,11 @@ class KuzuManager:
                 # Person node
                 for p in analysis_result.get("people", []):
                     self.conn.execute(
-                        "MERGE (p:Person {name: $name}) SET p.role = $role", 
+                        "MERGE (p:Person {name: $name})",
+                        {"name": p['name']}
+                    )
+                    self.conn.execute(
+                        "MATCH (p:Person {name: $name}) SET p.role = $role", 
                         {"name": p['name'], "role": p.get('role', 'Member')}
                     )
 
@@ -548,7 +583,11 @@ class KuzuManager:
                         continue
                     topic_keys_by_plain[plain_title] = scoped_title
                     self.conn.execute(
-                        "MERGE (t:Topic {title: $title}) SET t.summary = $summary",
+                        "MERGE (t:Topic {title: $title})",
+                        {"title": scoped_title}
+                    )
+                    self.conn.execute(
+                        "MATCH (t:Topic {title: $title}) SET t.summary = $summary",
                         {"title": scoped_title, "summary": t.get('summary', '')}
                     )
                     if t.get('proposer') and t['proposer'] != 'Unknown':
@@ -569,13 +608,20 @@ class KuzuManager:
                     scoped_desc = build_scoped_value(meeting_id, desc_text)
                     status = normalize_task_status(task.get("status", "pending"))
                     self.conn.execute(
-                        "MERGE (t:Task {description: $task_desc}) "
-                        "SET t.deadline = $due, t.status = $status",
+                        "MERGE (t:Task {description: $task_desc})",
+                        {"task_desc": scoped_desc}
+                    )
+                    self.conn.execute(
+                        "MATCH (t:Task {description: $task_desc}) SET t.deadline = $due, t.status = $status",
                         {"task_desc": scoped_desc, "due": task.get('deadline', 'TBD'), "status": status}
                     )
                     if task.get('assignee') and task['assignee'] != 'Unassigned':
                         self.conn.execute(
-                            "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
+                            "MERGE (p:Person {name: $name})",
+                            {"name": task['assignee']},
+                        )
+                        self.conn.execute(
+                            "MATCH (p:Person {name: $name}) SET p.role = 'Member'",
                             {"name": task['assignee']},
                         )
                         self.conn.execute(
@@ -620,8 +666,12 @@ class KuzuManager:
                     ent_type = str(ent.get("entity_type", "concept")).strip()
                     ent_desc = str(ent.get("description", "")).strip()
                     self.conn.execute(
-                        "MERGE (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $desc",
-                        {"name": scoped_name, "etype": ent_type, "desc": ent_desc},
+                        "MERGE (e:Entity {name: $name})",
+                        {"name": scoped_name},
+                    )
+                    self.conn.execute(
+                        "MATCH (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $edescription",
+                        {"name": scoped_name, "etype": ent_type, "edescription": ent_desc},
                     )
                     # Meeting ↔ Entity connect
                     if meeting_id:
@@ -632,7 +682,11 @@ class KuzuManager:
                     # Also create Person node for person-type entities
                     if ent_type == "person":
                         self.conn.execute(
-                            "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
+                            "MERGE (p:Person {name: $name})",
+                            {"name": ent_name},
+                        )
+                        self.conn.execute(
+                            "MATCH (p:Person {name: $name}) SET p.role = 'Member'",
                             {"name": ent_name},
                         )
 
@@ -677,7 +731,11 @@ class KuzuManager:
     def create_meeting(self, meeting_id: str, title: str, date: str = "", source_file: str = "") -> str:
         """Create a Meeting node."""
         self.conn.execute(
-            "MERGE (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
+            "MERGE (m:Meeting {id: $id})",
+            {"id": meeting_id}
+        )
+        self.conn.execute(
+            "MATCH (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
             {"id": meeting_id, "title": title, "date": date, "src": source_file}
         )
         logger.info("Meeting created: '%s' (%s)", title, meeting_id)
