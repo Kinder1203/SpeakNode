@@ -74,6 +74,7 @@ NODE_UPDATE_RULES: dict[str, dict[str, Any]] = {
     "Person": {"pk": "name", "fields": {"role"}},
     "Meeting": {"pk": "id", "fields": {"title", "date", "source_file"}},
     "Decision": {"pk": "description", "fields": set()},
+    "Entity": {"pk": "name", "fields": {"description", "entity_type"}},
 }
 
 
@@ -464,7 +465,7 @@ async def update_node(payload: NodeUpdateRequest):
             rows = db.execute_cypher(query, params)
             updated = rows[0][0] if rows else 0
 
-            if updated == 0 and payload.node_type in {"Topic", "Task"}:
+            if updated == 0 and payload.node_type in {"Topic", "Task", "Entity"}:
                 key_name = rule["pk"]
                 candidates = db.execute_cypher(f"MATCH (n:{payload.node_type}) RETURN n.{key_name} LIMIT 5000")
                 scoped_matches = [

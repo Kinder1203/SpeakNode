@@ -29,7 +29,7 @@ def search_by_meaning(args: dict, db, rag) -> str:
 
 @registry.register(
     "search_by_structure",
-    '구조적 관계를 탐색합니다. 인자: entity_type("topic"|"task"|"decision"|"person"|"meeting"), keyword(str, 선택).'
+    '구조적 관계를 탐색합니다. 인자: entity_type("topic"|"task"|"decision"|"person"|"meeting"|"entity"), keyword(str, 선택).'
 )
 def search_by_structure(args: dict, db, rag) -> str:
     entity_type = (args.get("entity_type") or "").strip().lower()
@@ -48,6 +48,8 @@ def search_by_structure(args: dict, db, rag) -> str:
             entity_type = "person"
         elif any(token in q for token in ["회의", "meeting", "요약"]):
             entity_type = "meeting"
+        elif any(token in q for token in ["기술", "개념", "조직", "이벤트", "entity", "관계"]):
+            entity_type = "entity"
         else:
             entity_type = "topic"
 
@@ -93,6 +95,25 @@ def search_by_structure(args: dict, db, rag) -> str:
         if not items:
             return "등록된 회의가 없습니다."
         return "\n".join(f"- [{m['id']}] {m['title']} ({m.get('date', '')})" for m in items)
+
+    elif entity_type == "entity":
+        etype_filter = (args.get("entity_type_filter") or "").strip()
+        items = rag.graph_search_entities(db, keyword=keyword, entity_type=etype_filter, limit=limit)
+        if not items:
+            return "등록된 엔티티가 없습니다."
+        lines = []
+        for e in items:
+            et = e.get("entity_type", "")
+            desc = e.get("description", "")
+            label = f"[{et}] " if et else ""
+            lines.append(f"- {label}{e['name']}: {desc}")
+        # Also include relations if available
+        relations = rag.graph_search_entity_relations(db, entity_name=keyword, limit=limit)
+        if relations:
+            lines.append("\n관계:")
+            for r in relations:
+                lines.append(f"  - {r['source']} —[{r['relation_type']}]→ {r['target']}")
+        return "\n".join(lines)
 
     else:
         return f"알 수 없는 entity_type: {entity_type}"

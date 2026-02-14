@@ -114,6 +114,7 @@ class KuzuManager:
                 "Decision(description STRING, PRIMARY KEY(description))",
                 f"Utterance(id STRING, text STRING, startTime FLOAT, endTime FLOAT, embedding FLOAT[{dim}], PRIMARY KEY(id))",
                 "Meeting(id STRING, title STRING, date STRING, source_file STRING, PRIMARY KEY(id))",
+                "Entity(name STRING, entity_type STRING, description STRING, PRIMARY KEY(name))",
             ],
             "REL": [
                 "PROPOSED(FROM Person TO Topic)",
@@ -125,6 +126,9 @@ class KuzuManager:
                 "CONTAINS(FROM Meeting TO Utterance)",
                 "HAS_TASK(FROM Meeting TO Task)",
                 "HAS_DECISION(FROM Meeting TO Decision)",
+                "RELATED_TO(FROM Entity TO Entity, relation_type STRING)",
+                "MENTIONS(FROM Topic TO Entity)",
+                "HAS_ENTITY(FROM Meeting TO Entity)",
             ]
         }
         
@@ -206,7 +210,7 @@ class KuzuManager:
     def export_graph_dump(self, include_embeddings: bool = True) -> dict:
         """Serialize the full graph to a shareable JSON-compatible dict."""
         dump = {
-            "schema_version": 2,
+            "schema_version": 3,
             "nodes": {
                 "meetings": [],
                 "people": [],
@@ -214,6 +218,7 @@ class KuzuManager:
                 "tasks": [],
                 "decisions": [],
                 "utterances": [],
+                "entities": [],
             },
             "edges": {
                 "proposed": [],
@@ -225,6 +230,9 @@ class KuzuManager:
                 "contains": [],
                 "has_task": [],
                 "has_decision": [],
+                "related_to": [],
+                "mentions": [],
+                "has_entity": [],
             },
         }
 
@@ -297,6 +305,30 @@ class KuzuManager:
             "MATCH (m:Meeting)-[:HAS_DECISION]->(d:Decision) RETURN m.id, d.description"
         ):
             dump["edges"]["has_decision"].append({"meeting_id": r[0], "decision": r[1]})
+
+        # Entity nodes (graceful fallback for old DBs)
+        try:
+            for r in self.execute_cypher("MATCH (e:Entity) RETURN e.name, e.entity_type, e.description"):
+                dump["nodes"]["entities"].append(
+                    {"name": r[0], "entity_type": r[1], "description": r[2]}
+                )
+            for r in self.execute_cypher(
+                "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) RETURN a.name, r.relation_type, b.name"
+            ):
+                dump["edges"]["related_to"].append(
+                    {"source": r[0], "relation_type": r[1], "target": r[2]}
+                )
+            for r in self.execute_cypher(
+                "MATCH (t:Topic)-[:MENTIONS]->(e:Entity) RETURN t.title, e.name"
+            ):
+                dump["edges"]["mentions"].append({"topic": r[0], "entity": r[1]})
+            for r in self.execute_cypher(
+                "MATCH (m:Meeting)-[:HAS_ENTITY]->(e:Entity) RETURN m.id, e.name"
+            ):
+                dump["edges"]["has_entity"].append({"meeting_id": r[0], "entity": r[1]})
+        except Exception:
+            # Old DB without Entity table — skip silently
+            pass
 
         return dump
 
@@ -446,6 +478,46 @@ class KuzuManager:
                     {"mid": item.get("meeting_id", ""), "decision_desc": item.get("decision", "")},
                 )
 
+            # Entity nodes (schema_version >= 3, graceful skip for v2 dumps)
+            for item in nodes.get("entities", []):
+                ent_name = item.get("name", "")
+                if not ent_name:
+                    continue
+                self.conn.execute(
+                    "MERGE (e:Entity {name: $name}) ON CREATE SET e.entity_type = $etype, e.description = $desc",
+                    {
+                        "name": ent_name,
+                        "etype": item.get("entity_type", "concept"),
+                        "desc": item.get("description", ""),
+                    },
+                )
+            for item in edges.get("related_to", []):
+                if not item.get("source") or not item.get("target"):
+                    continue
+                self.conn.execute(
+                    "MATCH (a:Entity {name: $src}), (b:Entity {name: $tgt}) "
+                    "MERGE (a)-[:RELATED_TO {relation_type: $rtype}]->(b)",
+                    {
+                        "src": item.get("source", ""),
+                        "tgt": item.get("target", ""),
+                        "rtype": item.get("relation_type", "related_to"),
+                    },
+                )
+            for item in edges.get("mentions", []):
+                if not item.get("topic") or not item.get("entity"):
+                    continue
+                self.conn.execute(
+                    "MATCH (t:Topic {title: $ttitle}), (e:Entity {name: $ename}) MERGE (t)-[:MENTIONS]->(e)",
+                    {"ttitle": item.get("topic", ""), "ename": item.get("entity", "")},
+                )
+            for item in edges.get("has_entity", []):
+                if not item.get("meeting_id") or not item.get("entity"):
+                    continue
+                self.conn.execute(
+                    "MATCH (m:Meeting {id: $mid}), (e:Entity {name: $ename}) MERGE (m)-[:HAS_ENTITY]->(e)",
+                    {"mid": item.get("meeting_id", ""), "ename": item.get("entity", "")},
+                )
+
         if has_embeddings_missing:
             logger.warning(
                 "Some utterances had no embeddings and were restored with zero vectors. "
@@ -536,6 +608,66 @@ class KuzuManager:
                             "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) MERGE (t)-[:RESULTED_IN]->(d)",
                             {"title": resolved_topic_key, "decision_desc": scoped_desc}
                         )
+
+                # Entity node and relationships
+                entity_keys_by_plain: dict[str, str] = {}
+                for ent in analysis_result.get("entities", []):
+                    ent_name = str(ent.get("name", "")).strip()
+                    if not ent_name:
+                        continue
+                    scoped_name = build_scoped_value(meeting_id, ent_name)
+                    entity_keys_by_plain[ent_name] = scoped_name
+                    ent_type = str(ent.get("entity_type", "concept")).strip()
+                    ent_desc = str(ent.get("description", "")).strip()
+                    self.conn.execute(
+                        "MERGE (e:Entity {name: $name}) ON CREATE SET e.entity_type = $etype, e.description = $desc",
+                        {"name": scoped_name, "etype": ent_type, "desc": ent_desc},
+                    )
+                    # Meeting ↔ Entity connect
+                    if meeting_id:
+                        self.conn.execute(
+                            "MATCH (m:Meeting {id: $mid}), (e:Entity {name: $ename}) MERGE (m)-[:HAS_ENTITY]->(e)",
+                            {"mid": meeting_id, "ename": scoped_name},
+                        )
+                    # Also create Person node for person-type entities
+                    if ent_type == "person":
+                        self.conn.execute(
+                            "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
+                            {"name": ent_name},
+                        )
+
+                # Entity-Entity relations
+                for rel in analysis_result.get("relations", []):
+                    src = str(rel.get("source", "")).strip()
+                    tgt = str(rel.get("target", "")).strip()
+                    rel_type = str(rel.get("relation_type", "related_to")).strip()
+                    src_key = entity_keys_by_plain.get(src)
+                    tgt_key = entity_keys_by_plain.get(tgt)
+                    if not src_key or not tgt_key:
+                        continue
+                    self.conn.execute(
+                        "MATCH (a:Entity {name: $src}), (b:Entity {name: $tgt}) "
+                        "MERGE (a)-[:RELATED_TO {relation_type: $rtype}]->(b)",
+                        {"src": src_key, "tgt": tgt_key, "rtype": rel_type},
+                    )
+
+                # Topic ↔ Entity connections (MENTIONS)
+                for plain_title, scoped_title in topic_keys_by_plain.items():
+                    topic_data = next(
+                        (t for t in analysis_result.get("topics", [])
+                         if str(t.get("title", "")).strip() == plain_title),
+                        None,
+                    )
+                    if not topic_data:
+                        continue
+                    topic_text = f"{plain_title} {topic_data.get('summary', '')}"
+                    for ent_plain, ent_scoped in entity_keys_by_plain.items():
+                        if ent_plain in topic_text:
+                            self.conn.execute(
+                                "MATCH (t:Topic {title: $ttitle}), (e:Entity {name: $ename}) "
+                                "MERGE (t)-[:MENTIONS]->(e)",
+                                {"ttitle": scoped_title, "ename": ent_scoped},
+                            )
 
             logger.info("Knowledge graph ingested.")
         except Exception:
@@ -690,6 +822,67 @@ class KuzuManager:
             )
         return [{"id": r[0], "title": r[1], "date": r[2], "source_file": r[3]} for r in rows]
 
+    def get_all_entities(self, limit: int = 20, keyword: str = "", entity_type: str = "") -> list[dict]:
+        """Retrieve Entity nodes with optional keyword and type filter."""
+        if keyword and entity_type:
+            rows = self.execute_cypher(
+                "MATCH (e:Entity) "
+                "WHERE (e.name CONTAINS $kw OR e.description CONTAINS $kw) AND e.entity_type = $etype "
+                "RETURN e.name, e.entity_type, e.description LIMIT $lim",
+                {"kw": keyword, "etype": entity_type, "lim": limit},
+            )
+        elif keyword:
+            rows = self.execute_cypher(
+                "MATCH (e:Entity) "
+                "WHERE e.name CONTAINS $kw OR e.description CONTAINS $kw "
+                "RETURN e.name, e.entity_type, e.description LIMIT $lim",
+                {"kw": keyword, "lim": limit},
+            )
+        elif entity_type:
+            rows = self.execute_cypher(
+                "MATCH (e:Entity) WHERE e.entity_type = $etype "
+                "RETURN e.name, e.entity_type, e.description LIMIT $lim",
+                {"etype": entity_type, "lim": limit},
+            )
+        else:
+            rows = self.execute_cypher(
+                "MATCH (e:Entity) RETURN e.name, e.entity_type, e.description LIMIT $lim",
+                {"lim": limit},
+            )
+        return [
+            {
+                "name": decode_scoped_value(r[0]),
+                "entity_type": r[1],
+                "description": r[2],
+                "meeting_id": extract_scope_from_value(r[0]),
+            }
+            for r in rows
+        ]
+
+    def get_entity_relations(self, entity_name: str = "", limit: int = 20) -> list[dict]:
+        """Retrieve RELATED_TO edges, optionally filtered by entity name."""
+        if entity_name:
+            rows = self.execute_cypher(
+                "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) "
+                "WHERE a.name CONTAINS $kw OR b.name CONTAINS $kw "
+                "RETURN a.name, r.relation_type, b.name LIMIT $lim",
+                {"kw": entity_name, "lim": limit},
+            )
+        else:
+            rows = self.execute_cypher(
+                "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) "
+                "RETURN a.name, r.relation_type, b.name LIMIT $lim",
+                {"lim": limit},
+            )
+        return [
+            {
+                "source": decode_scoped_value(r[0]),
+                "relation_type": r[1],
+                "target": decode_scoped_value(r[2]),
+            }
+            for r in rows
+        ]
+
     def get_meeting_summary(self, meeting_id: str) -> dict:
         # Meeting info
         meeting_rows = self.execute_cypher(
@@ -735,6 +928,15 @@ class KuzuManager:
                 "RETURN DISTINCT t.description, t.deadline, t.status, p.name",
                 {"mid": meeting_id},
             )
+        # Entities connected to this meeting (graceful fallback for old DBs)
+        try:
+            entities = self.execute_cypher(
+                "MATCH (m:Meeting {id: $mid})-[:HAS_ENTITY]->(e:Entity) "
+                "RETURN e.name, e.entity_type, e.description",
+                {"mid": meeting_id},
+            )
+        except Exception:
+            entities = []
         return {
             "meeting_id": meeting_id,
             "title": m[0], "date": m[1], "source_file": m[2],
@@ -766,6 +968,15 @@ class KuzuManager:
                     "meeting_id": extract_scope_from_value(r[0]),
                 }
                 for r in tasks
+            ],
+            "entities": [
+                {
+                    "name": decode_scoped_value(r[0]),
+                    "entity_type": r[1],
+                    "description": r[2],
+                    "meeting_id": extract_scope_from_value(r[0]),
+                }
+                for r in entities
             ],
         }
 

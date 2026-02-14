@@ -62,9 +62,10 @@ Respond with JSON only:
 
 Rules:
 - For questions about specific content/what was said: use "search_by_meaning"
-- For questions about people, topics, tasks, decisions: use "search_by_structure"
-  - include tool_args.entity_type in ["topic","task","decision","person","meeting"]
+- For questions about people, topics, tasks, decisions, entities: use "search_by_structure"
+  - include tool_args.entity_type in ["topic","task","decision","person","meeting","entity"]
   - include tool_args.keyword when relevant
+  - use "entity" for questions about specific concepts, technologies, organizations, events, or knowledge items
 - For complex questions combining multiple aspects: use "hybrid_search"
   - include tool_args.query as the full user question
 - For conditional/structured graph questions requiring explicit filters or custom joins: use "search_by_cypher"

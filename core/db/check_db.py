@@ -12,7 +12,7 @@ import sys
 from core.config import SpeakNodeConfig, get_chat_db_path, list_chat_ids
 from core.db.kuzu_manager import KuzuManager
 
-_NODE_TABLES = ["Person", "Topic", "Task", "Decision", "Utterance", "Meeting"]
+_NODE_TABLES = ["Person", "Topic", "Task", "Decision", "Utterance", "Meeting", "Entity"]
 
 
 def check_database(chat_id: str | None = None) -> None:

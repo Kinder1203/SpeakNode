@@ -136,7 +136,7 @@ class SpeakNodeEngine:
 
             if not analysis_data:
                 logger.warning("LLM extraction returned no results.")
-                return {"topics": [], "decisions": [], "tasks": [], "people": []}
+                return {"topics": [], "decisions": [], "tasks": [], "people": [], "entities": [], "relations": []}
 
             # Step 4: Knowledge graph ingest
             logger.info("Building knowledge graph...")

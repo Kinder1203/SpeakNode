@@ -37,6 +37,20 @@ class Decision(BaseModel):
     related_topic: str = ""
 
 
+class Entity(BaseModel):
+    """General knowledge entity extracted from audio content."""
+    name: str
+    entity_type: str = "concept"   # person | technology | organization | concept | event
+    description: str = ""
+
+
+class Relation(BaseModel):
+    """Relationship between two extracted entities."""
+    source: str
+    target: str
+    relation_type: str = "related_to"
+
+
 class Meeting(BaseModel):
     id: str
     title: str
@@ -49,6 +63,8 @@ class AnalysisResult(BaseModel):
     decisions: list[Decision] = Field(default_factory=list)
     tasks: list[Task] = Field(default_factory=list)
     people: list[Person] = Field(default_factory=list)
+    entities: list[Entity] = Field(default_factory=list)
+    relations: list[Relation] = Field(default_factory=list)
 
     def to_dict(self) -> dict:
         return self.model_dump()

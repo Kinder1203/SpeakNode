@@ -53,7 +53,7 @@ class HybridRAG:
         return self._cypher_llm
 
     def _generate_cypher(self, question: str, limit: int) -> tuple[str, dict]:
-        prompt = """You are a Cypher query generator for a meeting graph.
+        prompt = """You are a Cypher query generator for a meeting/knowledge graph.
 Return JSON only:
 {"query": "<cypher>", "params": { ... }}
 
@@ -70,6 +70,7 @@ Schema:
 - Decision(description)
 - Utterance(id, text, startTime, endTime, embedding)
 - Meeting(id, title, date, source_file)
+- Entity(name, entity_type, description)
 
 Relations:
 - (Person)-[:PROPOSED]->(Topic)
@@ -81,9 +82,13 @@ Relations:
 - (Meeting)-[:CONTAINS]->(Utterance)
 - (Meeting)-[:HAS_TASK]->(Task)
 - (Meeting)-[:HAS_DECISION]->(Decision)
+- (Entity)-[:RELATED_TO {relation_type}]->(Entity)
+- (Topic)-[:MENTIONS]->(Entity)
+- (Meeting)-[:HAS_ENTITY]->(Entity)
 
-Use meeting-aware relations (HAS_TASK, HAS_DECISION, DISCUSSED, CONTAINS) when possible.
-Topic.title / Task.description / Decision.description can be stored as "<meeting_id>::<plain_text>".
+Entity.entity_type can be: person, technology, organization, concept, event.
+Use meeting-aware relations (HAS_TASK, HAS_DECISION, DISCUSSED, CONTAINS, HAS_ENTITY) when possible.
+Topic.title / Task.description / Decision.description / Entity.name can be stored as "<meeting_id>::<plain_text>".
 For user-facing keyword filtering, prefer CONTAINS over exact equality.
 """
         response = self.cypher_llm.invoke(
@@ -196,6 +201,25 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
     def graph_search_meetings(self, db: KuzuManager, keyword: str = "", limit: int = 20) -> list[dict]:
         return db.get_all_meetings(limit=limit, keyword=keyword)
 
+    def graph_search_entities(
+        self, db: KuzuManager, keyword: str = "", entity_type: str = "", limit: int = 10
+    ) -> list[dict]:
+        """Search Entity nodes with optional keyword/type filter."""
+        try:
+            return db.get_all_entities(limit=limit, keyword=keyword, entity_type=entity_type)
+        except Exception:
+            # Graceful fallback for old DBs without Entity table
+            return []
+
+    def graph_search_entity_relations(
+        self, db: KuzuManager, entity_name: str = "", limit: int = 10
+    ) -> list[dict]:
+        """Search RELATED_TO edges between entities."""
+        try:
+            return db.get_entity_relations(entity_name=entity_name, limit=limit)
+        except Exception:
+            return []
+
     def hybrid_search(self, query: str, db: KuzuManager, top_k: int = 5, graph_k: int = 8) -> dict:
         """Fuse vector and graph search results into a single context."""
         query = (query or "").strip()
@@ -205,6 +229,10 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         ask_decisions = any(token in q for token in ["결정", "합의", "decision"])
         ask_people = any(token in q for token in ["참여", "누가", "사람", "담당자", "person"])
         ask_meetings = any(token in q for token in ["회의", "meeting", "요약", "언제"])
+        ask_entities = any(token in q for token in [
+            "기술", "개념", "조직", "이벤트", "entity", "무엇", "뭐", "어떤",
+            "관계", "연결", "관련", "역사", "발전",
+        ])
 
         # Vector Search
         vector_results = self.vector_search(query, db, top_k=top_k)
@@ -219,9 +247,17 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         people = self.graph_search_people(db, keyword=query if ask_people else "", limit=graph_k) if ask_people else []
         meetings = self.graph_search_meetings(db, keyword=query if ask_meetings else "", limit=graph_k) if ask_meetings else []
 
+        # Entity search — always include a baseline, keyword-boost when relevant
+        entities = self.graph_search_entities(db, keyword=query if ask_entities else "", limit=graph_k)
+        entity_relations = self.graph_search_entity_relations(db, entity_name=query if ask_entities else "", limit=graph_k)
+
         if not ask_tasks and not ask_decisions and not ask_people and not ask_meetings:
             tasks = self.graph_search_tasks(db, limit=min(3, graph_k))
             decisions = self.graph_search_decisions(db, limit=min(3, graph_k))
+
+        # If no specific intent detected and entities exist, always provide a baseline
+        if not entities and not ask_entities:
+            entities = self.graph_search_entities(db, limit=min(5, graph_k))
 
         graph_results = {
             "topics": topics,
@@ -229,6 +265,8 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
             "decisions": decisions,
             "people": people,
             "meetings": meetings,
+            "entities": entities,
+            "entity_relations": entity_relations,
         }
 
         # Merge context
@@ -245,6 +283,21 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
             context_parts.append("\n## 주제 (Topic)")
             for t in topics:
                 context_parts.append(f"- **{t['title']}**: {t.get('summary', '')}")
+
+        if entities:
+            context_parts.append("\n## 핵심 엔티티 (Entity)")
+            for e in entities:
+                etype = e.get("entity_type", "")
+                desc = e.get("description", "")
+                label = f"[{etype}] " if etype else ""
+                context_parts.append(f"- {label}**{e['name']}**: {desc}")
+
+        if entity_relations:
+            context_parts.append("\n## 엔티티 관계")
+            for er in entity_relations:
+                context_parts.append(
+                    f"- {er['source']} —[{er['relation_type']}]→ {er['target']}"
+                )
 
         if tasks:
             context_parts.append("\n## 할 일 (Task)")

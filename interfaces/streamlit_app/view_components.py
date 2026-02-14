@@ -74,6 +74,24 @@ def display_analysis_cards(result):
         st.subheader("📋 할 일")
         if result.get('tasks'): st.dataframe(result['tasks'])
 
+    # Entity / Relation cards
+    entities = result.get('entities', [])
+    relations = result.get('relations', [])
+    if entities or relations:
+        st.divider()
+        ec1, ec2 = st.columns(2)
+        with ec1:
+            st.subheader("🔗 핵심 엔티티")
+            for e in entities:
+                etype = e.get('entity_type', '')
+                desc = e.get('description', '')
+                label = f"[{etype}] " if etype else ""
+                st.markdown(f"- {label}**{e.get('name', '')}**: {desc}")
+        with ec2:
+            st.subheader("↔️ 관계")
+            for r in relations:
+                st.markdown(f"- {r.get('source', '')} → _{r.get('relation_type', '')}_ → {r.get('target', '')}")
+
 def render_graph_view(db_path):
     st.subheader("Knowledge Graph Explorer")
     try:
@@ -125,6 +143,28 @@ def render_graph_view(db_path):
             ):
                 net.add_edge(f"person::{person}", f"topic::{topic}", label="PROPOSED")
 
+            # Entity nodes and edges (graceful fallback for old DBs)
+            try:
+                for name, etype, desc in manager.execute_cypher("MATCH (e:Entity) RETURN e.name, e.entity_type, e.description"):
+                    plain = decode_scoped_value(name)
+                    net.add_node(
+                        f"entity::{name}",
+                        label=f"{plain}\n[{etype or 'concept'}]",
+                        color="#e67e22",
+                        shape="diamond",
+                        title=f"{etype}: {desc or plain}",
+                    )
+                for src, rtype, tgt in manager.execute_cypher(
+                    "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) RETURN a.name, r.relation_type, b.name"
+                ):
+                    net.add_edge(f"entity::{src}", f"entity::{tgt}", label=rtype or "RELATED_TO")
+                for topic, entity in manager.execute_cypher(
+                    "MATCH (t:Topic)-[:MENTIONS]->(e:Entity) RETURN t.title, e.name"
+                ):
+                    net.add_edge(f"topic::{topic}", f"entity::{entity}", label="MENTIONS")
+            except Exception:
+                pass  # Old DB without Entity table
+
             if not net.nodes:
                 st.info("No nodes to display yet.")
                 return
@@ -140,7 +180,7 @@ def render_graph_editor(db_path):
 
     entity_type = st.selectbox(
         "Node type",
-        options=["Topic", "Task", "Person", "Meeting"],
+        options=["Topic", "Task", "Person", "Meeting", "Entity"],
         key="graph_editor_entity_type",
     )
 
@@ -245,6 +285,38 @@ def render_graph_editor(db_path):
                     st.success("Person updated.")
                     st.rerun()
 
+            elif entity_type == "Entity":
+                try:
+                    rows = manager.execute_cypher("MATCH (e:Entity) RETURN e.name, e.entity_type, e.description ORDER BY e.name")
+                except Exception:
+                    rows = []
+                if not rows:
+                    st.info("No Entities to edit.")
+                    return
+                entity_map = {
+                    r[0]: {"entity_type": r[1] or "concept", "description": r[2] or ""}
+                    for r in rows
+                }
+                selected = st.selectbox(
+                    "Select Entity",
+                    list(entity_map.keys()),
+                    key="editor_entity_target",
+                    format_func=_format_scoped_label,
+                )
+                desc_key = f"editor_entity_desc::{selected}"
+                new_desc = st.text_area(
+                    "Description",
+                    value=entity_map[selected]["description"],
+                    key=desc_key,
+                )
+                if st.button("Save Entity", key="editor_entity_save"):
+                    manager.execute_cypher(
+                        "MATCH (e:Entity {name: $name}) SET e.description = $desc",
+                        {"name": selected, "desc": new_desc.strip()},
+                    )
+                    st.success("Entity updated.")
+                    st.rerun()
+
             elif entity_type == "Meeting":
                 rows = manager.execute_cypher("MATCH (m:Meeting) RETURN m.id, m.title, m.date, m.source_file ORDER BY m.date DESC")
                 if not rows:
@@ -322,6 +394,26 @@ def generate_static_graph_image(db_path, analysis_json, include_embeddings=False
             ):
                 if G.has_node(src) and G.has_node(dst):
                     G.add_edge(src, dst)
+
+            # Entity nodes and edges for static image (graceful fallback)
+            try:
+                for name, etype, desc in manager.execute_cypher("MATCH (e:Entity) RETURN e.name, e.entity_type, e.description"):
+                    plain = decode_scoped_value(name)
+                    label = (plain[:12] + "..") if len(plain) > 12 else plain
+                    G.add_node(name, color="#e67e22")
+                    labels[name] = label
+                for src, rtype, tgt in manager.execute_cypher(
+                    "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) RETURN a.name, r.relation_type, b.name"
+                ):
+                    if G.has_node(src) and G.has_node(tgt):
+                        G.add_edge(src, tgt)
+                for topic, entity in manager.execute_cypher(
+                    "MATCH (t:Topic)-[:MENTIONS]->(e:Entity) RETURN t.title, e.name"
+                ):
+                    if G.has_node(topic) and G.has_node(entity):
+                        G.add_edge(topic, entity)
+            except Exception:
+                pass  # Old DB without Entity table
 
             graph_dump = manager.export_graph_dump(include_embeddings=include_embeddings)
 
