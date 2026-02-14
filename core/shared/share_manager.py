@@ -19,22 +19,18 @@ class ShareManager:
         self.output_dir = output_dir
 
     def create_card(self, data: dict, filename: str = "meeting_card.png") -> str:
-        """
-        데이터를 시각화한 이미지 카드를 생성하고, 메타데이터에 원본 JSON을 숨김
-        """
-        # 경로 순회 방어: 디렉토리 성분 제거
+        """Generate a summary card image with the raw data embedded in PNG metadata."""
+        # Sanitise filename
         safe_filename = os.path.basename(filename) or "meeting_card.png"
 
-        # 1. 캔버스 생성
         width, height = 800, 600
         img = Image.new('RGB', (width, height), color=(30, 30, 30))
         draw = ImageDraw.Draw(img)
 
-        # 2. 폰트 설정 (OS 호환)
+        # Font setup (OS-aware)
         font_path = None
         try:
-            if os.name == 'posix':  # Linux (RunPod 등)
-                # 나눔고딕 우선 시도, 없으면 데자뷰 등 대체 폰트 탐색
+            if os.name == 'posix':
                 candidates = [
                     "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -44,8 +40,7 @@ class ShareManager:
                     if os.path.exists(path):
                         font_path = path
                         break
-            elif os.name == 'nt':  # Windows
-                # 윈도우 기본 폰트
+            elif os.name == 'nt':
                 font_path = "C:/Windows/Fonts/malgun.ttf"
             
             if font_path:
@@ -55,54 +50,54 @@ class ShareManager:
                 raise FileNotFoundError("No suitable font found.")
                 
         except Exception as e:
-            logger.warning("⚠️ 폰트 로드 실패(%s). 기본 폰트를 사용합니다 (한글 깨짐 가능성 있음).", e)
+            logger.warning("Font load failed (%s). Using default (CJK may break).", e)
             font_title = ImageFont.load_default()
             font_text = ImageFont.load_default()
 
-        # 제목 추출
+        # Extract title
         topics = data.get("topics", [])
         title_text = topics[0]['title'] if topics else "No Topic"
         summary_text = topics[0].get('summary', '') if topics else ""
 
-        # 화면에 글씨 쓰기
+        # Draw text
         draw.text((50, 50), f"SpeakNode Summary", fill=(0, 255, 127), font=font_title)
         draw.text((50, 100), f"Topic: {title_text}", fill=(255, 255, 255), font=font_text)
         
-        # 요약문 줄바꿈 처리
+        # Wrap summary
         lines = textwrap.wrap(summary_text, width=40)
         y_text = 150
-        for line in lines[:10]: # 최대 10줄만 표시
+        for line in lines[:10]:
             draw.text((50, y_text), line, fill=(200, 200, 200), font=font_text)
-            y_text += 30 # 줄 간격 조정
+            y_text += 30
 
-        # 3. 메타데이터에 JSON 숨기기
+        # Embed JSON payload in PNG metadata
         metadata = PngInfo()
         metadata.add_text("speaknode_data_zlib_b64", self._encode_payload(data))
 
-        # 4. 저장
+        # Save
         save_path = os.path.join(self.output_dir, safe_filename)
         img.save(save_path, "PNG", pnginfo=metadata)
-        logger.info("🖼️ [Share] 이미지 카드 생성 완료: %s", save_path)
+        logger.info("Share card created: %s", save_path)
         return save_path
 
     def load_data_from_image(self, image_path: str) -> dict | None:
-        """이미지 안에 숨겨진 SpeakNode 데이터를 추출"""
+        """Extract embedded SpeakNode data from a PNG image."""
         try:
             img = Image.open(image_path)
             compressed = img.text.get("speaknode_data_zlib_b64")
             legacy_json = img.text.get("speaknode_data")
 
             if compressed:
-                logger.info("🔓 [Share] 이미지에서 압축 데이터 추출 성공!")
+                logger.info("Compressed payload extracted from image.")
                 return self._decode_payload(compressed)
             if legacy_json:
-                logger.info("🔓 [Share] 이미지에서 데이터 추출 성공!")
+                logger.info("Legacy payload extracted from image.")
                 return json.loads(legacy_json)
 
-            logger.warning("⚠️ [Share] 이 이미지는 SpeakNode 데이터가 없습니다.")
+            logger.warning("No SpeakNode data in this image.")
             return None
         except Exception as e:
-            logger.error("❌ [Share] 이미지 읽기 실패: %s", e)
+            logger.error("Failed to read image: %s", e)
             return None
 
     @staticmethod

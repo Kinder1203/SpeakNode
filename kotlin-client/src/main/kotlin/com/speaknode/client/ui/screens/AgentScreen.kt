@@ -19,11 +19,11 @@ import androidx.compose.ui.unit.dp
 import com.speaknode.client.viewmodel.ChatMessage
 
 /**
- * AI Agent 대화 화면.
+ * AI Agent conversation screen.
  *
- * - 채팅 형태의 대화 UI
- * - 질문 입력 및 전송
- * - 실시간 로딩 표시
+ * - Chat-style conversation UI
+ * - Question input and submission
+ * - Real-time loading indicator
  */
 @Composable
 fun AgentScreen(
@@ -37,7 +37,7 @@ fun AgentScreen(
     var inputText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
 
-    // 새 메시지가 추가되면 자동 스크롤
+    // Auto-scroll when a new message is added
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(messages.lastIndex)

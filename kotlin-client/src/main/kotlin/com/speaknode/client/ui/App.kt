@@ -13,9 +13,9 @@ import com.speaknode.client.viewmodel.AgentViewModel
 import com.speaknode.client.viewmodel.AppViewModel
 
 /**
- * 루트 Composable.
+ * Root Composable.
  *
- * Sidebar(네비게이션) + Content(화면) 2-pane 레이아웃.
+ * 2-pane layout: Sidebar (navigation) + Content (screen).
  */
 @Composable
 fun App() {

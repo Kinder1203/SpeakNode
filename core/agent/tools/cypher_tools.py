@@ -1,6 +1,4 @@
-"""
-Cypher 도구: 자연어를 읽기 전용 Cypher로 변환해 구조 질의 실행
-"""
+"""Tool: translate natural language to read-only Cypher queries."""
 
 from __future__ import annotations
 

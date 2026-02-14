@@ -16,11 +16,11 @@ import com.speaknode.client.api.models.MeetingSummary
 import com.speaknode.client.viewmodel.AnalysisState
 
 /**
- * 회의 목록 화면.
+ * Meeting list screen.
  *
- * - 파일 업로드 (오디오 분석 트리거)
- * - 분석 상태 표시
- * - 현재 채팅의 회의 목록 표시
+ * - File upload (triggers audio analysis)
+ * - Analysis status indicator
+ * - Meeting list for the active chat session
  */
 @Composable
 fun MeetingScreen(

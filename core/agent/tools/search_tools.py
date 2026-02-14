@@ -1,6 +1,4 @@
-"""
-검색 도구 모음: Vector / Graph / Hybrid Search
-"""
+"""Tools: vector, graph, and hybrid search."""
 
 from __future__ import annotations
 from core.agent.tools import default_registry as registry

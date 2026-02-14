@@ -1,6 +1,4 @@
-"""
-일반 도구: DB 검색 불필요한 직접 답변
-"""
+"""Tool: direct answers that do not require DB lookup."""
 
 from __future__ import annotations
 

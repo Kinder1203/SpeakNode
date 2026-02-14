@@ -1,9 +1,7 @@
-"""SpeakNode DB 진단 스크립트.
+"""DB diagnostic script.
 
-사용법:
+Usage:
     python -m core.db.check_db [chat_id]
-
-chat_id를 생략하면 모든 채팅 DB를 진단합니다.
 """
 
 from __future__ import annotations

@@ -17,9 +17,9 @@ import java.io.Closeable
 import java.io.File
 
 /**
- * SpeakNode FastAPI 서버와 통신하는 HTTP 클라이언트.
+ * HTTP client for communicating with the SpeakNode FastAPI server.
  *
- * 모든 API 엔드포인트를 코루틴 기반 suspend 함수로 제공합니다.
+ * All API endpoints are provided as coroutine-based suspend functions.
  */
 class SpeakNodeApi(
     private val baseUrl: String = "http://localhost:8000",
@@ -39,7 +39,7 @@ class SpeakNodeApi(
             level = LogLevel.NONE  // LogLevel.INFO for debugging
         }
         install(HttpTimeout) {
-            requestTimeoutMillis = 300_000   // 분석은 오래 걸릴 수 있음
+            requestTimeoutMillis = 300_000   // analysis can take a long time
             connectTimeoutMillis = 10_000
         }
         defaultRequest {

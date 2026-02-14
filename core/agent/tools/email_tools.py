@@ -1,6 +1,4 @@
-"""
-이메일 도구: 회의 결과 기반 이메일 초안 생성
-"""
+"""Tool: draft meeting follow-up emails."""
 
 from __future__ import annotations
 

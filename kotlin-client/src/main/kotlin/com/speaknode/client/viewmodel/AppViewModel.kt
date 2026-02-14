@@ -8,37 +8,37 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * 애플리케이션 전역 상태를 관리하는 ViewModel.
+ * ViewModel managing global application state.
  *
- * - 서버 연결 상태, 채팅 목록, 활성 채팅 등을 관리
- * - Compose UI에서 StateFlow를 collect하여 반응형으로 렌더링
+ * - Manages server connection status, chat list, active chat, etc.
+ * - Compose UI collects StateFlow for reactive rendering.
  */
 class AppViewModel(
     private val api: SpeakNodeApi = SpeakNodeApi(),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // --- 서버 연결 상태 ---
+    // --- Server connection status ---
     private val _serverStatus = MutableStateFlow<ServerStatus>(ServerStatus.Unknown)
     val serverStatus: StateFlow<ServerStatus> = _serverStatus.asStateFlow()
 
-    // --- 채팅 목록 ---
+    // --- Chat list ---
     private val _chatIds = MutableStateFlow<List<String>>(emptyList())
     val chatIds: StateFlow<List<String>> = _chatIds.asStateFlow()
 
-    // --- 활성 채팅 ID ---
+    // --- Active chat ID ---
     private val _activeChatId = MutableStateFlow("default")
     val activeChatId: StateFlow<String> = _activeChatId.asStateFlow()
 
-    // --- 회의 목록 ---
+    // --- Meeting list ---
     private val _meetings = MutableStateFlow<List<MeetingSummary>>(emptyList())
     val meetings: StateFlow<List<MeetingSummary>> = _meetings.asStateFlow()
 
-    // --- 분석 상태 ---
+    // --- Analysis state ---
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState.asStateFlow()
 
-    // --- 에러 메시지 ---
+    // --- Error message ---
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 

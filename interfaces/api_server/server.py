@@ -194,7 +194,7 @@ app = FastAPI(
     description="Local meeting analysis API (STT + Graph DB + Agent)",
 )
 
-# --- CORS --- Kotlin/외부 클라이언트 연동 지원
+# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("SPEAKNODE_CORS_ORIGINS", "http://localhost:3000").split(","),
@@ -317,7 +317,7 @@ async def reset_chat(chat_id: str):
                 detail=f"failed to reset chat db: {exc}",
             ) from exc
 
-    # DB 삭제 후 더 이상 필요 없는 lock 객체 정리 (메모리 누수 방지)
+    # Remove stale lock after DB deletion
     async with _chat_locks_guard:
         _chat_locks.pop(safe_chat_id, None)
 

@@ -13,7 +13,7 @@ SCOPED_VALUE_SEPARATOR = "::"
 
 
 def build_scoped_value(meeting_id: str | None, value: str) -> str:
-    """회의 단위 충돌 방지를 위한 스코프 키 생성."""
+    """Create a meeting-scoped key to prevent cross-meeting collisions."""
     clean = str(value or "").strip()
     if not clean:
         return ""
@@ -23,7 +23,7 @@ def build_scoped_value(meeting_id: str | None, value: str) -> str:
 
 
 def decode_scoped_value(value: str) -> str:
-    """스코프 키에서 사용자 표시용 원본 값을 추출."""
+    """Extract the plain display value from a scoped key."""
     raw = str(value or "")
     if SCOPED_VALUE_SEPARATOR not in raw:
         return raw
@@ -32,7 +32,7 @@ def decode_scoped_value(value: str) -> str:
 
 
 def extract_scope_from_value(value: str) -> str:
-    """스코프 키에서 meeting_id를 추출."""
+    """Extract the meeting_id from a scoped key."""
     raw = str(value or "")
     if SCOPED_VALUE_SEPARATOR not in raw:
         return ""
@@ -46,7 +46,7 @@ class KuzuManager:
         if db_path is None:
             db_path = cfg.get_chat_db_path()
             
-        # DB 경로의 상위 폴더 생성 (dirname이 빈 문자열일 때 방어)
+        # Create parent directory if needed
         parent_dir = os.path.dirname(db_path)
         if parent_dir and not os.path.exists(parent_dir):
             os.makedirs(parent_dir, exist_ok=True)
@@ -58,13 +58,12 @@ class KuzuManager:
             self.conn = kuzu.Connection(self.db)
             self._initialize_schema()
         except Exception:
-            # 연결/스키마 초기화 실패 시 DB 리소스 해제
             try:
                 self.db.close()
             except Exception:
                 pass
             raise
-        logger.debug("KuzuDB 연결 완료: %s", db_path)
+        logger.debug("KuzuDB connected: %s", db_path)
 
     # --- Context Manager ---
     def __enter__(self):
@@ -75,9 +74,8 @@ class KuzuManager:
         return False  # 예외를 삼키지 않음
 
     def close(self):
-        """DB 리소스를 명시적으로 해제하여 Lock 방지"""
+        """Release DB resources (Connection then Database)."""
         try:
-            # Connection → Database 순서로 해제 (의존 순서 역순)
             if getattr(self, "conn", None) is not None:
                 if hasattr(self.conn, "close"):
                     self.conn.close()
@@ -86,17 +84,13 @@ class KuzuManager:
                 if hasattr(self.db, "close"):
                     self.db.close()
                 self.db = None
-            logger.debug("💾 KuzuDB 리소스가 안전하게 해제되었습니다.")
+            logger.debug("KuzuDB resources released.")
         except Exception as e:
-            logger.warning("⚠️ DB 해제 중 오류 발생: %s", e)
+            logger.warning("Error releasing DB resources: %s", e)
 
     @contextmanager
     def _transaction(self):
-        """
-        수동 트랜잭션 컨텍스트 매니저.
-        블록 내 모든 execute()를 하나의 트랜잭션으로 묶어
-        중간 실패 시 ROLLBACK으로 원자성(All-or-Nothing)을 보장합니다.
-        """
+        """Manual transaction: wraps a block in BEGIN/COMMIT with ROLLBACK on error."""
         self.conn.execute("BEGIN TRANSACTION")
         try:
             yield
@@ -104,16 +98,13 @@ class KuzuManager:
         except BaseException:
             try:
                 self.conn.execute("ROLLBACK")
-                logger.info("↩️ [DB] 트랜잭션 ROLLBACK 완료 — 변경사항이 취소되었습니다.")
+                logger.info("Transaction rolled back.")
             except Exception as rb_err:
-                logger.error("❌ [DB] ROLLBACK 실패: %s", rb_err)
+                logger.error("ROLLBACK failed: %s", rb_err)
             raise
 
     def _initialize_schema(self):
-        """
-        스키마 정의 (Graph + Vector)
-        Meeting 노드로 회의 단위 관리, Utterance에 embedding으로 Vector RAG 지원
-        """
+        """Create node and relationship tables if they do not exist."""
         dim = self.config.embedding_dim
         tables = {
             "NODE": [
@@ -147,42 +138,31 @@ class KuzuManager:
                         logger.warning("⚠️ 스키마 생성 중 예외 발생 (%s): %s", definition, e)
 
     def ingest_transcript(self, segments: list[dict], embeddings: list[list[float]] | None = None, meeting_id: str | None = None) -> int:
-        """
-        STT 결과(전체 대화 내용)를 DB에 적재
-        - segments: Transcriber 결과 리스트
-        - embeddings: 각 세그먼트에 대응하는 벡터 리스트 (Optional)
-        - meeting_id: 회의 ID (있으면 Meeting-CONTAINS 연결)
-        반환값: 성공적으로 적재된 세그먼트 수
-        
-        트랜잭션으로 감싸여 있어 중간 실패 시 자동 롤백됩니다.
-        """
-        logger.info("📥 [DB] 대화 내용 적재 시작 (총 %d 문장)...", len(segments))
+        """Ingest STT segments into the graph. Wrapped in a transaction."""
+        logger.info("Ingesting %d segments...", len(segments))
         dim = self.config.embedding_dim
         previous_id = None
         ingested_count = 0
         
-        # --- 임베딩 싱크 검증 (트랜잭션 진입 전 유효성 검사) ---
+        # Validate embedding/segment count before entering transaction
         if embeddings is not None and len(embeddings) != len(segments):
             raise ValueError(
-                f"임베딩 길이 불일치: segments={len(segments)}, embeddings={len(embeddings)}. "
-                "모든 세그먼트에 대응하는 임베딩이 필요합니다."
+                f"Embedding count mismatch: segments={len(segments)}, embeddings={len(embeddings)}"
             )
         
         try:
             with self._transaction():
                 for i, seg in enumerate(segments):
-                    # meeting_id + index 기반 식별자로 타임스탬프 충돌을 방지합니다.
                     start = float(seg.get("start", 0.0))
                     end = float(seg.get("end", 0.0))
                     text = str(seg.get("text", "")).strip()
                     scope = meeting_id or "global"
                     u_id = f"u_{scope}_{i:06d}_{int(start * 1000):010d}"
                     
-                    # 임베딩이 반드시 있어야 함 (없으면 제로벡터 삽입 방지)
+                    # Require an actual embedding for every segment
                     if not embeddings or i >= len(embeddings):
                         raise ValueError(
-                            f"세그먼트 {i}에 대한 임베딩이 없습니다. "
-                            "임베딩 없이는 적재할 수 없습니다."
+                            f"Missing embedding for segment {i}"
                         )
                     vector = embeddings[i]
                     
@@ -216,20 +196,16 @@ class KuzuManager:
                     previous_id = u_id
                     ingested_count += 1
                 
-            logger.info("✅ [DB] 대화 흐름(NEXT) 및 화자(SPOKE) 연결 완료. (%d/%d건 적재)", ingested_count, len(segments))
+            logger.info("Transcript ingested (%d/%d segments).", ingested_count, len(segments))
 
         except Exception:
-            logger.exception("❌ 대화 내용 적재 중 오류 (적재 완료: %d/%d건)", ingested_count, len(segments))
+            logger.exception("Transcript ingest error (%d/%d done)", ingested_count, len(segments))
             raise
         
         return ingested_count
 
-    # ================================================================
-    # 📦 Dump/Restore — PNG 공유용 전체 그래프 직렬화
-    # ================================================================
-
     def export_graph_dump(self, include_embeddings: bool = True) -> dict:
-        """현재 DB의 노드/엣지를 공유 가능한 JSON 덤프로 추출."""
+        """Serialize the full graph to a shareable JSON-compatible dict."""
         dump = {
             "schema_version": 2,
             "nodes": {
@@ -326,12 +302,7 @@ class KuzuManager:
         return dump
 
     def restore_graph_dump(self, dump: dict) -> None:
-        """
-        export_graph_dump 결과를 DB에 복원.
-        
-        트랜잭션으로 감싸여 있어 중간 실패 시 자동 롤백됩니다.
-        (All-or-Nothing: 모든 노드/엣지가 복원되거나, 하나도 복원되지 않음)
-        """
+        """Restore a graph dump into the DB. Wrapped in a transaction."""
         if not isinstance(dump, dict):
             raise ValueError("graph dump must be a dict")
 
@@ -478,18 +449,13 @@ class KuzuManager:
 
         if has_embeddings_missing:
             logger.warning(
-                "⚠️ [DB] 일부 Utterance에 임베딩이 없어 제로벡터로 복원되었습니다. "
-                "벡터 검색 결과가 제한될 수 있습니다."
+                "Some utterances had no embeddings and were restored with zero vectors. "
+                "Vector search quality may be reduced."
             )
 
     def ingest_data(self, analysis_result: dict, meeting_id: str | None = None) -> None:
-        """
-        LLM 분석 결과(요약, 할일 등) 적재.
-        analysis_result: dict 또는 AnalysisResult 모델 모두 허용.
-        
-        트랜잭션으로 감싸여 있어 중간 실패 시 자동 롤백됩니다.
-        """
-        # AnalysisResult Pydantic 모델 ↔ dict 역호환
+        """Ingest LLM-extracted analysis data. Wrapped in a transaction."""
+        # AnalysisResult Pydantic model <-> dict compatibility
         if hasattr(analysis_result, "to_dict"):
             analysis_result = analysis_result.to_dict()
         try:
@@ -572,36 +538,22 @@ class KuzuManager:
                             {"title": resolved_topic_key, "decision_desc": scoped_desc}
                         )
 
-            logger.info("🎉 지식 그래프(Knowledge Graph) 적재 완료!")
+            logger.info("Knowledge graph ingested.")
         except Exception:
-            logger.exception("❌ 분석 데이터 적재 중 오류")
+            logger.exception("Analysis data ingest error")
             raise
 
-    # ================================================================
-    # 🆕 Meeting (회의 단위 관리)
-    # ================================================================
-
     def create_meeting(self, meeting_id: str, title: str, date: str = "", source_file: str = "") -> str:
-        """
-        Meeting 노드 생성 (회의 단위의 시작점)
-        반환값: meeting_id
-        """
+        """Create a Meeting node."""
         self.conn.execute(
             "MERGE (m:Meeting {id: $id}) ON CREATE SET m.title = $title, m.date = $date, m.source_file = $src",
             {"id": meeting_id, "title": title, "date": date, "src": source_file}
         )
-        logger.info("📋 [DB] Meeting 생성: '%s' (%s)", title, meeting_id)
+        logger.info("Meeting created: '%s' (%s)", title, meeting_id)
         return meeting_id
 
-    # ================================================================
-    # 📖 Graph RAG — 구조적 읽기/검색
-    # ================================================================
-
     def execute_cypher(self, query: str, params: dict | None = None) -> list[tuple]:
-        """
-        범용 Cypher 쿼리 실행. Agent가 직접 쿼리를 생성하여 호출할 수 있음.
-        결과를 list[tuple]로 반환.
-        """
+        """Execute a Cypher query and return rows as list[tuple]."""
         result = self.conn.execute(query, params or {})
         rows: list[tuple] = []
         while result.has_next():
@@ -609,7 +561,6 @@ class KuzuManager:
         return rows
 
     def get_all_topics(self, limit: int = 20, keyword: str = "") -> list[dict]:
-        """Topic 노드 조회 (선택적으로 keyword/limit 적용)."""
         if keyword:
             rows = self.execute_cypher(
                 "MATCH (t:Topic) "
@@ -633,7 +584,6 @@ class KuzuManager:
         ]
 
     def get_all_tasks(self, limit: int = 20, keyword: str = "") -> list[dict]:
-        """Task 노드 + 담당자 조회 (선택적으로 keyword/limit 적용)."""
         if keyword:
             rows = self.execute_cypher(
                 "MATCH (t:Task) OPTIONAL MATCH (p:Person)-[:ASSIGNED_TO]->(t) "
@@ -659,7 +609,6 @@ class KuzuManager:
         } for r in rows]
 
     def get_person_tasks(self, person_name: str, limit: int = 20) -> list[dict]:
-        """특정 인물에게 할당된 Task 조회"""
         rows = self.execute_cypher(
             "MATCH (p:Person {name: $name})-[:ASSIGNED_TO]->(t:Task) "
             "RETURN t.description, t.deadline, t.status LIMIT $lim",
@@ -674,7 +623,6 @@ class KuzuManager:
         } for r in rows]
 
     def get_topic_decisions(self, topic_title: str, limit: int = 20) -> list[dict]:
-        """특정 Topic에서 도출된 Decision 조회"""
         target = (topic_title or "").strip()
         if not target:
             return []
@@ -713,7 +661,6 @@ class KuzuManager:
         return decisions
 
     def get_all_people(self, limit: int = 20, keyword: str = "") -> list[dict]:
-        """Person 노드 조회 (선택적으로 keyword/limit 적용)."""
         if keyword:
             rows = self.execute_cypher(
                 "MATCH (p:Person) "
@@ -729,7 +676,6 @@ class KuzuManager:
         return [{"name": r[0], "role": r[1]} for r in rows]
 
     def get_all_meetings(self, limit: int = 20, keyword: str = "") -> list[dict]:
-        """Meeting 노드 조회 (선택적으로 keyword/limit 적용)."""
         if keyword:
             rows = self.execute_cypher(
                 "MATCH (m:Meeting) "
@@ -746,8 +692,7 @@ class KuzuManager:
         return [{"id": r[0], "title": r[1], "date": r[2], "source_file": r[3]} for r in rows]
 
     def get_meeting_summary(self, meeting_id: str) -> dict:
-        """특정 회의의 전체 요약 (연결된 Topic, Task, Decision 포함)"""
-        # 회의 기본 정보
+        # Meeting info
         meeting_rows = self.execute_cypher(
             "MATCH (m:Meeting {id: $mid}) RETURN m.title, m.date, m.source_file",
             {"mid": meeting_id}
@@ -756,7 +701,7 @@ class KuzuManager:
             return {}
         
         m = meeting_rows[0]
-        # 연결된 Topic
+        # Connected topics
         topics = self.execute_cypher(
             "MATCH (m:Meeting {id: $mid})-[:DISCUSSED]->(t:Topic) RETURN t.title, t.summary",
             {"mid": meeting_id}
@@ -825,15 +770,8 @@ class KuzuManager:
             ],
         }
 
-    # ================================================================
-    # 🔍 Vector RAG — 의미 기반 검색
-    # ================================================================
-
     def search_similar_utterances(self, query_vector: list[float], top_k: int = 5) -> list[dict]:
-        """
-        코사인 유사도 기반으로 가장 관련 있는 Utterance를 검색.
-        DB에 벡터 인덱스가 없으면 순차 스캔으로 fallback.
-        """
+        """Cosine similarity search over utterance embeddings."""
         try:
             # KuzuDB 0.11+ HNSW 벡터 검색 시도
             rows = self.execute_cypher(

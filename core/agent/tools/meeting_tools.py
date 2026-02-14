@@ -1,6 +1,4 @@
-"""
-회의 관련 도구: Meeting Summary
-"""
+"""Tool: meeting summary retrieval."""
 
 from __future__ import annotations
 

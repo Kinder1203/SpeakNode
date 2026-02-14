@@ -118,12 +118,11 @@ Hard rules:
         )
         
     def extract(self, transcript: str) -> AnalysisResult:
-        """LLM으로 회의 내용 분석. 결과를 AnalysisResult 모델로 반환합니다."""
+        """Run LLM extraction and return a normalised AnalysisResult."""
         try:
-            # Context Window 보호: 프롬프트 오버헤드(~500토큰)를 제외하고 transcript를 잘라냅니다.
             safe_transcript = truncate_text(transcript, max_tokens=27_000)
             raw = self.chain.invoke({"transcript": safe_transcript})
             return self._normalize(raw, transcript)
         except Exception:
-            logger.exception("❌ [Extractor Error] %s", self.model_name)
+            logger.exception("Extractor error (%s)", self.model_name)
             raise

@@ -12,7 +12,7 @@ matplotlib.use("Agg")
 
 logger = logging.getLogger("speaknode.app")
 
-import view_components as vc
+import view_components as vc  # noqa: E402
 from core.pipeline import SpeakNodeEngine
 from core.shared.share_manager import ShareManager
 from core.db.kuzu_manager import KuzuManager
@@ -28,7 +28,7 @@ share_mgr = ShareManager(output_dir=SHARED_CARDS_DIR)
 
 @st.cache_resource
 def get_engine():
-    logger.info("🏗️ SpeakNodeEngine 초기화 중...")
+    logger.info("Initialising SpeakNodeEngine...")
     return SpeakNodeEngine()
 
 if 'analysis_result' not in st.session_state:
@@ -39,16 +39,16 @@ if "active_chat_id" not in st.session_state:
 vc.render_header()
 
 with st.sidebar:
-    st.header("📂 Workspace")
-    uploaded_audio = st.file_uploader("회의 녹음 파일 (분석용)", type=["mp3", "wav", "m4a"])
+    st.header("Workspace")
+    uploaded_audio = st.file_uploader("Audio file (for analysis)", type=["mp3", "wav", "m4a"])
     meeting_title_input = st.text_input(
-        "회의 제목 (선택)",
-        placeholder="예: 2026-02-13 주간 운영회의",
-        help="비워두면 파일명 기반으로 자동 생성됩니다.",
+        "Meeting title (optional)",
+        placeholder="e.g. 2026-02-13 Weekly Ops Meeting",
+        help="Leave blank to auto-generate from file name.",
     )
     
     st.divider()
-    st.subheader("💬 Chat Sessions")
+    st.subheader("Chat Sessions")
 
     chat_ids = list_chat_ids(_config)
     active_chat_id = sanitize_chat_id(st.session_state["active_chat_id"])
@@ -56,10 +56,10 @@ with st.sidebar:
         chat_ids = [active_chat_id] + chat_ids
 
     selected_chat_id = st.selectbox(
-        "채팅 선택",
+        "Select chat",
         options=chat_ids if chat_ids else ["default"],
         index=(chat_ids.index(active_chat_id) if chat_ids else 0),
-        help="같은 채팅은 누적 저장, 다른 채팅은 다른 DB를 사용합니다.",
+        help="Same chat accumulates data; different chats use separate DBs.",
     )
 
     if selected_chat_id != st.session_state["active_chat_id"]:
@@ -67,21 +67,21 @@ with st.sidebar:
         st.session_state["analysis_result"] = None
         st.rerun()
 
-    new_chat_name = st.text_input("새 채팅 이름", placeholder="예: genomics_review")
-    if st.button("➕ 새 채팅 생성", use_container_width=True):
+    new_chat_name = st.text_input("New chat name", placeholder="e.g. genomics_review")
+    if st.button("New chat", use_container_width=True):
         new_chat_id = sanitize_chat_id(new_chat_name)
         st.session_state["active_chat_id"] = new_chat_id
         st.session_state["analysis_result"] = None
-        st.success(f"채팅 '{new_chat_id}' 생성 완료")
+        st.success(f"Chat '{new_chat_id}' created")
         st.rerun()
 
     current_db_path = get_chat_db_path(st.session_state["active_chat_id"], _config)
 
     st.divider()
-    st.subheader("⚙️ System Settings")
+    st.subheader("System Settings")
     st.info(f"**Model:** qwen2.5:14b\n\n**Active Chat:** {st.session_state['active_chat_id']}")
 
-    if st.button("🗑️ 현재 채팅 DB 초기화", type="secondary"):
+    if st.button("Reset current chat DB", type="secondary"):
         try:
             st.session_state['analysis_result'] = None
             if os.path.exists(current_db_path):
@@ -90,23 +90,23 @@ with st.sidebar:
                     os.remove(current_db_path)
                 else:
                     shutil.rmtree(current_db_path)
-            st.success("현재 채팅 DB가 초기화되었습니다.")
+            st.success("Chat DB has been reset.")
             time.sleep(0.5)
             st.rerun()
         except Exception as e:
-            st.error(f"초기화 실패: {e}")
+            st.error(f"Reset failed: {e}")
 
 if uploaded_audio:
     st.audio(uploaded_audio)
     
-    if st.button("🚀 회의 분석 시작", type="primary"):
+    if st.button("Analyze meeting", type="primary"):
         safe_filename = os.path.basename(uploaded_audio.name)
         temp_audio = os.path.join(project_root, f"temp_{safe_filename}")
         
         with open(temp_audio, "wb") as f:
             f.write(uploaded_audio.getbuffer())
         
-        with st.status("🔍 분석 중...", expanded=True) as status:
+        with st.status("Analyzing...", expanded=True) as status:
             try:
                 engine = get_engine()
                 result = engine.process(
@@ -117,23 +117,23 @@ if uploaded_audio:
                 st.session_state['analysis_result'] = result
                 
                 if result:
-                    status.update(label="✅ 분석 완료!", state="complete", expanded=False)
+                    status.update(label="Analysis complete", state="complete", expanded=False)
                 else:
-                    status.update(label="⚠️ 내용 없음", state="error")
-                    st.warning("분석 결과가 없습니다.")
+                    status.update(label="No content", state="error")
+                    st.warning("No analysis results.")
             except Exception as e:
-                st.error(f"에러 발생: {e}")
-                logger.error("분석 중 오류 발생: %s", e, exc_info=True)
-                status.update(label="❌ 실패", state="error")
+                st.error(f"Error: {e}")
+                logger.error("Analysis error: %s", e, exc_info=True)
+                status.update(label="Failed", state="error")
         
         if os.path.exists(temp_audio):
             try:
                 os.remove(temp_audio)
             except OSError as e:
-                logger.warning("임시 파일 삭제 실패: %s", e)
+                logger.warning("Failed to remove temp file: %s", e)
 
 elif not st.session_state['analysis_result']: 
-    st.info("회의 파일을 업로드하거나, 기존 그래프 이미지를 통해 복원하세요.")
+    st.info("Upload a meeting recording or import a graph image to get started.")
     
     restored_data = vc.render_import_card_ui(share_mgr)
     if restored_data:
@@ -152,12 +152,12 @@ elif not st.session_state['analysis_result']:
             with KuzuManager(current_db_path, config=_config) as db_mgr:
                 if restored_graph_dump:
                     db_mgr.restore_graph_dump(restored_graph_dump)
-                    st.success("✅ 전체 그래프 데이터 복원 및 DB 동기화 완료!")
+                    st.success("Full graph data restored and synced to DB.")
                 else:
                     db_mgr.ingest_data(restored_analysis)
-                    st.success("✅ 분석 데이터 복원 및 DB 동기화 완료!")
+                    st.success("Analysis data restored and synced to DB.")
         except Exception as e:
-            st.error(f"❌ DB 복원 중 오류: {e}")
+            st.error(f"DB restore error: {e}")
             
         time.sleep(0.5)
         st.rerun()
@@ -168,7 +168,7 @@ if st.session_state['analysis_result']:
     st.divider()
     vc.display_analysis_cards(result)
     
-    tab_graph, tab_agent, tab_save = st.tabs(["🕸️ Knowledge Graph", "🤖 AI Agent", "💾 저장"])
+    tab_graph, tab_agent, tab_save = st.tabs(["Knowledge Graph", "AI Agent", "Save"])
     
     with tab_graph:
         if os.path.exists(current_db_path):
@@ -176,11 +176,11 @@ if st.session_state['analysis_result']:
             st.divider()
             vc.render_graph_editor(current_db_path)
         else:
-            st.info("현재 채팅에는 아직 저장된 그래프 데이터가 없습니다.")
+            st.info("No graph data for this chat yet.")
 
     with tab_agent:
-        st.subheader("🤖 AI Agent — 회의 데이터 질의")
-        st.caption("회의 내용에 대해 자유롭게 질문하세요. 이메일 초안 작성도 가능합니다.")
+        st.subheader("AI Agent")
+        st.caption("Ask questions about meeting data. Email drafting is also supported.")
         history_key = f"agent_chat_history::{st.session_state['active_chat_id']}"
         
         if history_key not in st.session_state:
@@ -236,15 +236,15 @@ if st.session_state['analysis_result']:
                         chat_history.append({"role": "assistant", "content": error_msg})
         
         if chat_history:
-            if st.button("🗑️ 대화 초기화", key="clear_agent_chat"):
+            if st.button("Clear chat", key="clear_agent_chat"):
                 st.session_state[history_key] = []
                 st.rerun()
 
     with tab_save:
-        st.subheader("💾 지식 그래프 이미지 저장")
-        st.info("현재 결과를 지식 그래프 이미지로 저장합니다. PNG에 데이터가 포함되어 공유 시 DB 복원이 가능합니다.")
+        st.subheader("Save Knowledge Graph")
+        st.info("Export the current graph as a PNG image. Embedded data allows DB restoration when shared.")
         include_embeddings = st.checkbox(
-            "임베딩 포함 저장 (파일 크기 증가, Vector 검색 품질 유지)",
+            "Include embeddings (larger file, preserves vector search quality)",
             value=False,
             key="save_with_embeddings",
         )
@@ -254,4 +254,4 @@ if st.session_state['analysis_result']:
             include_embeddings=include_embeddings,
         )
         if buf:
-            st.download_button("📥 그래프 다운로드", buf, "graph.png", "image/png")
+            st.download_button("Download graph", buf, "graph.png", "image/png")

@@ -1,9 +1,4 @@
-"""
-SpeakNode Hybrid RAG (검색 엔진)
-=================================
-Vector RAG (의미 기반) + Graph RAG (구조 기반) 결합 검색.
-Agent의 Tool이 이 모듈을 호출하여 회의 DB에서 정보를 탐색합니다.
-"""
+"""Hybrid RAG engine combining vector and graph search."""
 
 import json
 import logging
@@ -37,12 +32,7 @@ FORBIDDEN_CYPHER_TOKENS = (
 
 
 class HybridRAG:
-    """
-    Hybrid RAG Engine
-    - Vector Search: 임베딩 코사인 유사도로 관련 발언 검색
-    - Graph Search: PROPOSED, ASSIGNED_TO, RESULTED_IN 등 구조적 관계 탐색
-    - Fusion: 두 결과를 합산하여 중복 제거 후 LLM 컨텍스트 생성
-    """
+    """Vector + Graph fusion search engine."""
 
     def __init__(self, config: SpeakNodeConfig = None):
         self.config = config or SpeakNodeConfig()
@@ -50,12 +40,10 @@ class HybridRAG:
 
     @property
     def embedder(self):
-        """Embedding 모델 — 프로세스 전역 싱글턴 캐시를 통해 반환."""
         return get_embedder(self.config.embedding_model)
 
     @property
     def cypher_llm(self):
-        """자연어 -> Cypher 변환용 LLM (JSON 출력 강제)"""
         if self._cypher_llm is None:
             self._cypher_llm = ChatOllama(
                 model=self.config.agent_model,
@@ -113,25 +101,25 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
 
     def _validate_read_only_cypher(self, query: str) -> tuple[bool, str]:
         if not query:
-            return False, "생성된 Cypher 쿼리가 비어 있습니다."
+            return False, "Empty Cypher query."
 
         normalized_start = re.sub(r"\s+", " ", query.strip()).upper()
         if not normalized_start.startswith(("MATCH ", "OPTIONAL MATCH ", "WITH ")):
-            return False, "허용되지 않은 Cypher 시작 절입니다. (MATCH/OPTIONAL MATCH/WITH만 허용)"
+            return False, "Cypher must start with MATCH/OPTIONAL MATCH/WITH."
 
         upper_query = query.upper()
         if ";" in query:
-            return False, "여러 문장을 포함한 Cypher는 허용되지 않습니다."
+            return False, "Multiple statements are not allowed."
         if "RETURN" not in upper_query:
-            return False, "Cypher 쿼리에 RETURN 절이 없습니다."
+            return False, "Cypher query must contain a RETURN clause."
 
         for token in FORBIDDEN_CYPHER_TOKENS:
             if re.search(rf"\b{token}\b", upper_query):
-                return False, f"읽기 전용 정책 위반 토큰 감지: {token}"
+                return False, f"Read-only policy violation: {token}"
         return True, ""
 
     def cypher_search(self, question: str, db: KuzuManager, limit: int = 20) -> dict:
-        """자연어 질문을 읽기 전용 Cypher로 변환해 실행합니다."""
+        """Translate a natural language question to read-only Cypher and execute it."""
         safe_limit = max(1, min(int(limit or 20), 200))
         try:
             query, params = self._generate_cypher(question, safe_limit)
@@ -168,28 +156,17 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
                 "rows": [],
             }
 
-    # ================================================================
-    # 🔍 Vector RAG — 의미 기반 검색
-    # ================================================================
-
     def vector_search(self, query: str, db: KuzuManager, top_k: int = 5) -> list[dict]:
-        """자연어 질의를 벡터화하여 가장 유사한 Utterance를 찾습니다."""
+        """Find the most similar utterances by embedding cosine similarity."""
         query_vec = self.embedder.encode(query).tolist()
-        results = db.search_similar_utterances(query_vec, top_k=top_k)
-        return results
-
-    # ================================================================
-    # 🕸️ Graph RAG — 구조 기반 검색
-    # ================================================================
+        return db.search_similar_utterances(query_vec, top_k=top_k)
 
     def graph_search_topics(self, db: KuzuManager, keyword: str = "", limit: int = 10) -> list[dict]:
-        """Topic 노드 검색. keyword가 있으면 CONTAINS 필터."""
         return db.get_all_topics(limit=limit, keyword=keyword)
 
     def graph_search_tasks(
         self, db: KuzuManager, person_name: str = "", keyword: str = "", limit: int = 10
     ) -> list[dict]:
-        """Task 노드 검색. person_name이 있으면 해당 인물의 Task만."""
         if person_name:
             return db.get_person_tasks(person_name, limit=limit)
         return db.get_all_tasks(limit=limit, keyword=keyword)
@@ -197,7 +174,6 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
     def graph_search_decisions(
         self, db: KuzuManager, topic_title: str = "", keyword: str = "", limit: int = 10
     ) -> list[dict]:
-        """Decision 노드 검색. topic_title이 있으면 해당 Topic의 Decision만."""
         if topic_title:
             return db.get_topic_decisions(topic_title, limit=limit)
         if keyword:
@@ -215,22 +191,13 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         return [{"description": r[0]} for r in rows]
 
     def graph_search_people(self, db: KuzuManager, keyword: str = "", limit: int = 10) -> list[dict]:
-        """모든 Person 노드 조회."""
         return db.get_all_people(limit=limit, keyword=keyword)
 
     def graph_search_meetings(self, db: KuzuManager, keyword: str = "", limit: int = 20) -> list[dict]:
-        """모든 Meeting 노드 조회."""
         return db.get_all_meetings(limit=limit, keyword=keyword)
 
-    # ================================================================
-    # 🔄 Hybrid Search — 결합 검색
-    # ================================================================
-
     def hybrid_search(self, query: str, db: KuzuManager, top_k: int = 5, graph_k: int = 8) -> dict:
-        """
-        Vector Search + Graph Search 결합.
-        질의에서 키워드를 추출하여 양쪽 모두 검색한 뒤 통합 컨텍스트를 생성합니다.
-        """
+        """Fuse vector and graph search results into a single context."""
         query = (query or "").strip()
         q = query.lower()
 

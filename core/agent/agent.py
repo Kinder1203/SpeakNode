@@ -1,15 +1,9 @@
-"""
-SpeakNode LangGraph Agent (Phase 4 — Refactored)
-==================================================
-회의 DB를 바탕으로 질의응답, 이메일 초안 작성, 데이터 검색 등을 수행하는
-지능형 AI 에이전트.
+"""LangGraph-based AI agent for meeting data queries.
 
 Architecture:
-    User Query → Router (LLM) → ToolRegistry.execute() → Synthesizer → Response
+    User Query -> Router (LLM) -> ToolRegistry.execute() -> Synthesizer -> Response
 
-Tool 추가 방법:
-    core/tools/ 내 파일에서 @registry.register("name", "desc") 데코레이터 사용.
-    agent.py 수정 불필요.
+New tools are registered via @registry.register() in core/agent/tools/.
 """
 
 from __future__ import annotations
@@ -30,19 +24,14 @@ from core.utils import truncate_text
 
 logger = logging.getLogger(__name__)
 
-# --- Tool 자동 수집 --------------------------------
-# tools 패키지의 default_registry에 모든 도구가 등록됨
+# Import tool modules to trigger registration
 from core.agent.tools import default_registry as tool_registry
-import core.agent.tools.search_tools    # noqa: F401  — 등록 트리거
+import core.agent.tools.search_tools    # noqa: F401
 import core.agent.tools.cypher_tools    # noqa: F401
 import core.agent.tools.meeting_tools   # noqa: F401
 import core.agent.tools.email_tools     # noqa: F401
 import core.agent.tools.general_tools   # noqa: F401
 
-
-# ================================================================
-# 1. Agent State
-# ================================================================
 
 class AgentState(TypedDict):
     messages: list
@@ -53,19 +42,14 @@ class AgentState(TypedDict):
     final_answer: str
 
 
-# ================================================================
-# 2. Graph Nodes
-# ================================================================
-
 def router_node(state: AgentState, llm: ChatOllama) -> AgentState:
-    """사용자 질문을 분석하여 적절한 Tool을 선택합니다."""
+    """Analyze the user query and select an appropriate tool."""
     user_messages = state["messages"]
 
-    # Context Window 보호: 대화 히스토리가 길면 최근 것만 사용
     MAX_ROUTER_MESSAGES = 10
     recent_messages = user_messages[-MAX_ROUTER_MESSAGES:] if len(user_messages) > MAX_ROUTER_MESSAGES else user_messages
 
-    # Tool 설명을 Registry에서 자동 생성
+    # Tool descriptions are auto-generated from the registry
     tool_descriptions = tool_registry.get_descriptions()
 
     router_prompt = f"""You are a tool router for a meeting analysis system.
@@ -114,7 +98,7 @@ Rules:
 def tool_executor_node(
     state: AgentState, db: KuzuManager, rag: HybridRAG
 ) -> AgentState:
-    """ToolRegistry를 통해 선택된 Tool을 실행합니다."""
+    """Execute the selected tool via the registry."""
     result = tool_registry.execute(
         state.get("tool_name", "direct_answer"),
         state.get("tool_args", {}),
@@ -127,14 +111,12 @@ def tool_executor_node(
 
 
 def synthesizer_node(state: AgentState, llm: ChatOllama) -> AgentState:
-    """Tool 결과를 바탕으로 자연어 응답을 생성합니다."""
+    """Generate a natural language answer from tool results."""
     tool_name = state.get("tool_name", "")
     tool_result = state.get("tool_result", "")
 
-    # Context Window 보호: 검색 결과가 너무 길면 잘라냄
     safe_tool_result = truncate_text(tool_result, max_tokens=20_000)
 
-    # 대화 히스토리도 최근 메시지만 유지 (context window 보호)
     all_messages = state.get("messages", [])
     MAX_HISTORY_MESSAGES = 20
     recent_messages = all_messages[-MAX_HISTORY_MESSAGES:] if len(all_messages) > MAX_HISTORY_MESSAGES else all_messages
@@ -187,18 +169,8 @@ Cite specific data from the results. If results are empty, let the user know.
     return state
 
 
-# ================================================================
-# 3. SpeakNodeAgent — 외부 진입점
-# ================================================================
-
 class SpeakNodeAgent:
-    """
-    LangGraph 기반 SpeakNode AI Agent.
-
-    사용법:
-        agent = SpeakNodeAgent(db_path="/path/to/db.kuzu")
-        response = agent.query("이번 회의에서 결정된 사항은?")
-    """
+    """LangGraph-based agent with per-query DB lifecycle."""
 
     def __init__(self, db_path: str, config: SpeakNodeConfig | None = None):
         self.config = config or SpeakNodeConfig()
@@ -233,14 +205,14 @@ class SpeakNodeAgent:
         return workflow.compile()
 
     def _tool_executor(self, state: AgentState) -> AgentState:
-        """query() 수명주기 동안 열려 있는 DB 연결을 재사용합니다."""
+        """Reuse the DB connection kept open during query()."""
         db = getattr(self._local, "active_db", None)
         if db is None:
-            raise RuntimeError("Agent DB가 초기화되지 않았습니다. query() 메서드를 통해 호출하세요.")
+            raise RuntimeError("Agent DB not initialised. Call query() instead.")
         return tool_executor_node(state, db, self.rag)
 
     def query(self, user_question: str, chat_history: list | None = None) -> str:
-        """DB 연결을 쿼리 수명주기 동안 유지하고, 완료 후 해제합니다."""
+        """Run the agent graph, managing DB lifecycle per call."""
         messages = chat_history or []
         messages.append(HumanMessage(content=user_question))
 
@@ -257,9 +229,9 @@ class SpeakNodeAgent:
             self._local.active_db = db
             try:
                 final_state = self.graph.invoke(initial_state)
-                return final_state.get("final_answer", "응답을 생성할 수 없습니다.")
+                return final_state.get("final_answer", "Unable to generate a response.")
             except Exception as e:
-                logger.exception("❌ [Agent] 처리 중 오류")
-                return f"죄송합니다, 처리 중 오류가 발생했습니다: {e}"
+                logger.exception("Agent processing error")
+                return f"An error occurred: {e}"
             finally:
                 self._local.active_db = None

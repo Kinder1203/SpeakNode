@@ -16,12 +16,12 @@ import androidx.compose.ui.unit.dp
 import com.speaknode.client.viewmodel.ServerStatus
 
 /**
- * 네비게이션 사이드바.
+ * Navigation sidebar.
  *
- * - 서버 연결 상태 표시
- * - 채팅 목록 및 선택
- * - 새 채팅 생성
- * - 화면 전환 (Meetings / Agent)
+ * - Server connection status indicator
+ * - Chat list and selection
+ * - New chat creation
+ * - Screen switching (Meetings / Agent)
  */
 @Composable
 fun Sidebar(

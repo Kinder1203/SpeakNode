@@ -8,25 +8,25 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Agent 대화 상태를 관리하는 ViewModel.
+ * ViewModel managing Agent conversation state.
  *
- * 채팅별로 독립적인 대화 히스토리를 유지합니다.
+ * Maintains independent conversation history per chat session.
  */
 class AgentViewModel(
     private val api: SpeakNodeApi = SpeakNodeApi(),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // --- 대화 히스토리 ---
+    // --- Conversation history ---
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
-    // --- 로딩 상태 ---
+    // --- Loading state ---
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     /**
-     * Agent에 질문을 전송하고 응답을 대화 히스토리에 추가합니다.
+     * Sends a question to the Agent and appends the response to the conversation history.
      */
     fun sendQuery(question: String, chatId: String) {
         val currentMessages = _messages.value.toMutableList()

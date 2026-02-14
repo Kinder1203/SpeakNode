@@ -1,22 +1,22 @@
 # SpeakNode Kotlin Client
 
-Compose Multiplatform Desktop 기반 SpeakNode 클라이언트.
+Compose Multiplatform Desktop client for SpeakNode.
 
 ## Requirements
 
 - JDK 17+
-- Gradle 8.11+ (wrapper 포함)
+- Gradle 8.11+ (wrapper included)
 
 ## Build & Run
 
 ```bash
-# Gradle wrapper 생성 (최초 1회)
+# Generate Gradle wrapper (first time only)
 gradle wrapper
 
-# 실행
+# Run
 ./gradlew run
 
-# 배포 패키지 생성
+# Create distribution package
 ./gradlew packageDeb       # Linux
 ./gradlew packageDmg       # macOS
 ./gradlew packageMsi       # Windows
@@ -26,22 +26,22 @@ gradle wrapper
 
 ```
 kotlin-client/
-├── build.gradle.kts                         # 빌드 설정 (Compose + Ktor)
+├── build.gradle.kts                         # Build config (Compose + Ktor)
 ├── src/main/kotlin/com/speaknode/client/
-│   ├── Main.kt                              # 엔트리포인트
+│   ├── Main.kt                              # Entry point
 │   ├── api/
-│   │   ├── SpeakNodeApi.kt                  # HTTP 클라이언트 (Ktor)
-│   │   └── models/ApiModels.kt              # Request/Response 모델
+│   │   ├── SpeakNodeApi.kt                  # HTTP client (Ktor)
+│   │   └── models/ApiModels.kt              # Request/Response models
 │   ├── ui/
-│   │   ├── App.kt                           # 루트 Composable
-│   │   ├── theme/Theme.kt                   # Material 3 다크 테마
-│   │   ├── components/Sidebar.kt            # 네비게이션 사이드바
+│   │   ├── App.kt                           # Root Composable
+│   │   ├── theme/Theme.kt                   # Material 3 dark theme
+│   │   ├── components/Sidebar.kt            # Navigation sidebar
 │   │   └── screens/
-│   │       ├── MeetingScreen.kt             # 회의 분석/목록
-│   │       └── AgentScreen.kt               # AI Agent 대화
+│   │       ├── MeetingScreen.kt             # Meeting analysis/list
+│   │       └── AgentScreen.kt               # AI Agent conversation
 │   └── viewmodel/
-│       ├── AppViewModel.kt                  # 전역 상태 관리
-│       └── AgentViewModel.kt                # Agent 대화 상태
+│       ├── AppViewModel.kt                  # Global state management
+│       └── AgentViewModel.kt                # Agent conversation state
 ```
 
 ## Tech Stack
@@ -54,27 +54,27 @@ kotlin-client/
 | Async | Kotlinx Coroutines |
 | Build | Gradle Kotlin DSL |
 
-## API Endpoints (Python 서버)
+## API Endpoints (Python Server)
 
-서버 기본 주소: `http://localhost:8000`
+Default server address: `http://localhost:8000`
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/health` | 서버 상태 확인 |
-| GET | `/chats` | 채팅 목록 |
-| POST | `/chats` | 채팅 생성 |
-| DELETE | `/chats/{id}` | 채팅 삭제 |
-| POST | `/analyze` | 오디오 분석 |
-| POST | `/agent/query` | Agent 질의 |
-| GET | `/meetings` | 회의 목록 |
-| GET | `/meetings/{id}` | 회의 상세 |
-| GET | `/graph/export` | 그래프 내보내기 |
-| POST | `/graph/import` | 그래프 가져오기 |
-| PATCH | `/nodes/update` | 노드 수정 |
+| GET | `/health` | Server health check |
+| GET | `/chats` | List chat sessions |
+| POST | `/chats` | Create chat session |
+| DELETE | `/chats/{id}` | Delete chat session |
+| POST | `/analyze` | Analyze audio |
+| POST | `/agent/query` | Agent query |
+| GET | `/meetings` | List meetings |
+| GET | `/meetings/{id}` | Meeting details |
+| GET | `/graph/export` | Export graph |
+| POST | `/graph/import` | Import graph |
+| PATCH | `/nodes/update` | Update node |
 
 ## Server Configuration
 
-CORS 허용 origin은 환경 변수로 설정:
+CORS allowed origins are configured via environment variable:
 
 ```bash
 export SPEAKNODE_CORS_ORIGINS="http://localhost:3000,http://localhost:8080"

@@ -10,9 +10,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 private val SpeakNodeDark = darkColorScheme(
-    primary = Color(0xFF7C4DFF),        // 보라색 포인트
+    primary = Color(0xFF7C4DFF),        // purple accent
     onPrimary = Color.White,
-    secondary = Color(0xFF00E676),       // 녹색 보조
+    secondary = Color(0xFF00E676),       // green secondary
     onSecondary = Color.Black,
     surface = Color(0xFF1E1E1E),
     onSurface = Color(0xFFE0E0E0),
