@@ -175,7 +175,7 @@ SpeakNode/
 ```
 ## License
 
-CC by NC ND 4.0 license
-
+This project is licensed under the GNU Affero General Public License v3.0 (AGPL-3.0).
+Commercial use requires a separate agreement.
 
 [Project Detail Architecture and Planning Document](project.md)
