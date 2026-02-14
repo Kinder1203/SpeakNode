@@ -173,7 +173,9 @@ SpeakNode/
 │   └── api_examples.http      # HTTP request collection (11 examples)
 └── requirements.txt
 ```
-
 ## License
 
 CC by NC ND 4.0 license
+
+
+[Project Detail Architecture and Planning Document](project.md)
