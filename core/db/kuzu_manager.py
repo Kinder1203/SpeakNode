@@ -170,13 +170,13 @@ class KuzuManager:
                     vector = embeddings[i]
                     
                     self.conn.execute(
-                        "MERGE (u:Utterance {id: $id}) ON CREATE SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
+                        "MERGE (u:Utterance {id: $id}) SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
                         {"id": u_id, "text": text, "stime": start, "etime": end, "vec": vector}
                     )
                     
                     speaker_name = seg.get('speaker', 'Unknown')
                     self.conn.execute(
-                        "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
+                        "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
                         {"name": speaker_name}
                     )
                     self.conn.execute(
@@ -484,7 +484,7 @@ class KuzuManager:
                 if not ent_name:
                     continue
                 self.conn.execute(
-                    "MERGE (e:Entity {name: $name}) ON CREATE SET e.entity_type = $etype, e.description = $desc",
+                    "MERGE (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $desc",
                     {
                         "name": ent_name,
                         "etype": item.get("entity_type", "concept"),
@@ -536,7 +536,7 @@ class KuzuManager:
                 # Person node
                 for p in analysis_result.get("people", []):
                     self.conn.execute(
-                        "MERGE (p:Person {name: $name}) ON CREATE SET p.role = $role", 
+                        "MERGE (p:Person {name: $name}) SET p.role = $role", 
                         {"name": p['name'], "role": p.get('role', 'Member')}
                     )
 
@@ -548,7 +548,7 @@ class KuzuManager:
                         continue
                     topic_keys_by_plain[plain_title] = scoped_title
                     self.conn.execute(
-                        "MERGE (t:Topic {title: $title}) ON CREATE SET t.summary = $summary",
+                        "MERGE (t:Topic {title: $title}) SET t.summary = $summary",
                         {"title": scoped_title, "summary": t.get('summary', '')}
                     )
                     if t.get('proposer') and t['proposer'] != 'Unknown':
@@ -570,12 +570,12 @@ class KuzuManager:
                     status = normalize_task_status(task.get("status", "pending"))
                     self.conn.execute(
                         "MERGE (t:Task {description: $task_desc}) "
-                        "ON CREATE SET t.deadline = $due, t.status = $status",
+                        "SET t.deadline = $due, t.status = $status",
                         {"task_desc": scoped_desc, "due": task.get('deadline', 'TBD'), "status": status}
                     )
                     if task.get('assignee') and task['assignee'] != 'Unassigned':
                         self.conn.execute(
-                            "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
+                            "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
                             {"name": task['assignee']},
                         )
                         self.conn.execute(
@@ -620,7 +620,7 @@ class KuzuManager:
                     ent_type = str(ent.get("entity_type", "concept")).strip()
                     ent_desc = str(ent.get("description", "")).strip()
                     self.conn.execute(
-                        "MERGE (e:Entity {name: $name}) ON CREATE SET e.entity_type = $etype, e.description = $desc",
+                        "MERGE (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $desc",
                         {"name": scoped_name, "etype": ent_type, "desc": ent_desc},
                     )
                     # Meeting ↔ Entity connect
@@ -632,7 +632,7 @@ class KuzuManager:
                     # Also create Person node for person-type entities
                     if ent_type == "person":
                         self.conn.execute(
-                            "MERGE (p:Person {name: $name}) ON CREATE SET p.role = 'Member'",
+                            "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
                             {"name": ent_name},
                         )
 
@@ -677,7 +677,7 @@ class KuzuManager:
     def create_meeting(self, meeting_id: str, title: str, date: str = "", source_file: str = "") -> str:
         """Create a Meeting node."""
         self.conn.execute(
-            "MERGE (m:Meeting {id: $id}) ON CREATE SET m.title = $title, m.date = $date, m.source_file = $src",
+            "MERGE (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
             {"id": meeting_id, "title": title, "date": date, "src": source_file}
         )
         logger.info("Meeting created: '%s' (%s)", title, meeting_id)
