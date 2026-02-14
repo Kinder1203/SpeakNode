@@ -1039,15 +1039,16 @@ class KuzuManager:
         }
 
     def search_similar_utterances(self, query_vector: list[float], top_k: int = 5) -> list[dict]:
-        """Cosine similarity search over utterance embeddings."""
+        """Cosine similarity search over utterance embeddings with speaker and meeting context."""
         try:
-            # KuzuDB 0.11+ HNSW Vector search attempt
             rows = self.execute_cypher(
                 """
                 MATCH (u:Utterance)
                 WITH u, array_cosine_similarity(u.embedding, $qvec) AS score
                 WHERE score > 0.0
-                RETURN u.id, u.text, u.startTime, u.endTime, score
+                OPTIONAL MATCH (p:Person)-[:SPOKE]->(u)
+                OPTIONAL MATCH (m:Meeting)-[:CONTAINS]->(u)
+                RETURN u.id, u.text, u.startTime, u.endTime, score, p.name, m.id, m.title
                 ORDER BY score DESC
                 LIMIT $k
                 """,
@@ -1055,8 +1056,27 @@ class KuzuManager:
             )
             return [{
                 "id": r[0], "text": r[1],
-                "start": r[2], "end": r[3], "score": r[4]
+                "start": r[2], "end": r[3], "score": r[4],
+                "speaker": r[5], "meeting_id": r[6], "meeting_title": r[7]
             } for r in rows]
         except Exception as e:
-            logger.warning("⚠️ [Vector Search] 검색 실패: %s", e)
-            return []
+            logger.warning("⚠️ [Vector Search] Enriched query failed, trying fallback: %s", e)
+            try:
+                rows = self.execute_cypher(
+                    """
+                    MATCH (u:Utterance)
+                    WITH u, array_cosine_similarity(u.embedding, $qvec) AS score
+                    WHERE score > 0.0
+                    RETURN u.id, u.text, u.startTime, u.endTime, score
+                    ORDER BY score DESC
+                    LIMIT $k
+                    """,
+                    {"qvec": query_vector, "k": top_k}
+                )
+                return [{
+                    "id": r[0], "text": r[1],
+                    "start": r[2], "end": r[3], "score": r[4]
+                } for r in rows]
+            except Exception as e2:
+                logger.warning("⚠️ [Vector Search] 검색 실패: %s", e2)
+                return []

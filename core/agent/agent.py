@@ -60,20 +60,20 @@ Analyze the user's question and select the most appropriate tool.
 Respond with JSON only:
 {{"tool_name": "<tool_name>", "tool_args": {{<args>}}}}
 
-Rules:
-- For questions about specific content/what was said: use "search_by_meaning"
-- For questions about people, topics, tasks, decisions, entities: use "search_by_structure"
-  - include tool_args.entity_type in ["topic","task","decision","person","meeting","entity"]
-  - include tool_args.keyword when relevant
-  - use "entity" for questions about specific concepts, technologies, organizations, events, or knowledge items
-- For complex questions combining multiple aspects: use "hybrid_search"
-  - include tool_args.query as the full user question
-- For conditional/structured graph questions requiring explicit filters or custom joins: use "search_by_cypher"
-  - include tool_args.query as the full user question
-  - include tool_args.limit when user requests count/limit
-- For meeting overview/summary: use "get_meeting_summary"
-- For email drafting requests: use "draft_email"
-- For general greetings or questions not related to meeting data: use "direct_answer"
+Rules (in priority order):
+1. General greetings or off-topic questions → "direct_answer"
+2. Email drafting requests → "draft_email"
+3. Summary of a specific meeting (meeting ID or title known) → "get_meeting_summary"
+4. Questions explicitly about what someone said or direct quotes → "search_by_meaning"
+   - include tool_args.query as the search phrase
+5. Simple listing requests ("주제 목록", "할 일 목록", "참여자 목록", "회의 목록") → "search_by_structure"
+   - include entity_type in ["topic","task","decision","person","meeting","entity"]
+   - include keyword when relevant
+6. Questions about a specific person (e.g. "김태훈에 대해") → "search_by_structure"
+   - set entity_type to "person" and keyword to the person's name
+7. For ALL other questions → "hybrid_search" (default choice)
+   - include tool_args.query as the full user question
+   - This includes: complex questions, multi-aspect queries, concept questions, relationship questions, analysis requests, and any ambiguous queries
 """
 
     messages = [SystemMessage(content=router_prompt)] + recent_messages

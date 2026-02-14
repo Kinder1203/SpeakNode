@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
 from core.config import SpeakNodeConfig
-from core.db.kuzu_manager import KuzuManager
+from core.db.kuzu_manager import KuzuManager, decode_scoped_value
 from core.embedding import get_embedder
 
 logger = logging.getLogger(__name__)
@@ -269,20 +269,74 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
             "entity_relations": entity_relations,
         }
 
+        # ── Enrich: topics → proposer + decisions ──
+        for t in topics:
+            raw_title = t.get("id", t["title"])
+            try:
+                prop_rows = db.execute_cypher(
+                    "MATCH (p:Person)-[:PROPOSED]->(tp:Topic {title: $title}) "
+                    "RETURN p.name LIMIT 3",
+                    {"title": raw_title},
+                )
+                t["proposers"] = [r[0] for r in prop_rows]
+            except Exception:
+                t["proposers"] = []
+            try:
+                dec_rows = db.execute_cypher(
+                    "MATCH (tp:Topic {title: $title})-[:RESULTED_IN]->(d:Decision) "
+                    "RETURN d.description LIMIT 5",
+                    {"title": raw_title},
+                )
+                t["decisions"] = [decode_scoped_value(r[0]) for r in dec_rows]
+            except Exception:
+                t["decisions"] = []
+
+        # ── Enrich: people → proposed topics + assigned tasks ──
+        for p in people:
+            name = p.get("name", "")
+            try:
+                topic_rows = db.execute_cypher(
+                    "MATCH (pe:Person {name: $name})-[:PROPOSED]->(t:Topic) "
+                    "RETURN t.title LIMIT 5",
+                    {"name": name},
+                )
+                p["proposed_topics"] = [decode_scoped_value(r[0]) for r in topic_rows]
+            except Exception:
+                p["proposed_topics"] = []
+            try:
+                task_rows = db.execute_cypher(
+                    "MATCH (pe:Person {name: $name})-[:ASSIGNED_TO]->(t:Task) "
+                    "RETURN t.description, t.status LIMIT 5",
+                    {"name": name},
+                )
+                p["assigned_tasks"] = [
+                    {"description": decode_scoped_value(r[0]), "status": r[1] or "?"}
+                    for r in task_rows
+                ]
+            except Exception:
+                p["assigned_tasks"] = []
+
         # Merge context
         context_parts = []
 
         if vector_results:
             context_parts.append("## 관련 발언 (의미 기반 검색)")
             for vr in vector_results:
+                speaker = vr.get('speaker') or '알 수 없음'
+                meeting = vr.get('meeting_title') or ''
+                meeting_tag = f" [{meeting}]" if meeting else ""
                 context_parts.append(
-                    f"- [{vr.get('start', 0):.1f}s] {vr['text']} (유사도: {vr.get('score', 0):.3f})"
+                    f"- [{vr.get('start', 0):.1f}s] **{speaker}**: {vr['text']}{meeting_tag} (유사도: {vr.get('score', 0):.3f})"
                 )
 
         if topics:
             context_parts.append("\n## 주제 (Topic)")
             for t in topics:
-                context_parts.append(f"- **{t['title']}**: {t.get('summary', '')}")
+                proposer_str = ", ".join(t.get("proposers", [])) or "미지정"
+                line = f"- **{t['title']}**: {t.get('summary', '')} (제안: {proposer_str})"
+                context_parts.append(line)
+                for dec in t.get("decisions", []):
+                    context_parts.append(f"  → 결정: {dec}")
 
         if entities:
             context_parts.append("\n## 핵심 엔티티 (Entity)")
@@ -303,17 +357,26 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
             context_parts.append("\n## 할 일 (Task)")
             for t in tasks:
                 assignee = t.get("assignee", "미지정")
-                context_parts.append(f"- {t['description']} (담당: {assignee}, 상태: {t.get('status', '?')})")
+                deadline = t.get("deadline") or "미정"
+                context_parts.append(f"- {t['description']} (담당: {assignee}, 기한: {deadline}, 상태: {t.get('status', '?')})")
 
         if decisions:
             context_parts.append("\n## 결정 사항 (Decision)")
             for d in decisions:
-                context_parts.append(f"- {d['description']}")
+                context_parts.append(f"- {decode_scoped_value(d['description'])}")
 
         if people:
             context_parts.append("\n## 참여자")
             for p in people:
-                context_parts.append(f"- {p['name']} ({p.get('role', 'Member')})")
+                line = f"- **{p['name']}** ({p.get('role', 'Member')})"
+                proposed = p.get("proposed_topics", [])
+                assigned = p.get("assigned_tasks", [])
+                if proposed:
+                    line += f" | 제안: {', '.join(proposed)}"
+                if assigned:
+                    task_strs = [f"{a['description']}({a.get('status', '?')})" for a in assigned]
+                    line += f" | 할 일: {', '.join(task_strs)}"
+                context_parts.append(line)
 
         if meetings:
             context_parts.append("\n## 회의")
