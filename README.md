@@ -121,6 +121,4 @@ SpeakNode/
 ```
 ## License
 
-Private Project
-
 CC by NC ND 4.0 license

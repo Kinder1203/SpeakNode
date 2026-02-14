@@ -126,7 +126,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         except Exception as exc:
             return {
                 "ok": False,
-                "error": f"Cypher 생성 실패: {exc}",
+                "error": f"Cypher execution failed: {exc}",
                 "query": "",
                 "rows": [],
             }
@@ -151,7 +151,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         except Exception as exc:
             return {
                 "ok": False,
-                "error": f"Cypher 실행 실패: {exc}",
+                "error": f"Cypher execution failed: {exc}",
                 "query": query,
                 "rows": [],
             }
@@ -206,10 +206,10 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         ask_people = any(token in q for token in ["참여", "누가", "사람", "담당자", "person"])
         ask_meetings = any(token in q for token in ["회의", "meeting", "요약", "언제"])
 
-        # 1. Vector Search: 의미적으로 유사한 발언 검색
+        # Vector Search
         vector_results = self.vector_search(query, db, top_k=top_k)
 
-        # 2. Graph Search: 구조적 관련 정보 수집
+        # Graph Search
         topics = self.graph_search_topics(db, keyword=query, limit=graph_k)
         tasks = self.graph_search_tasks(db, keyword=query if ask_tasks else "", limit=graph_k) if ask_tasks else []
         decisions = (
@@ -220,7 +220,6 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         meetings = self.graph_search_meetings(db, keyword=query if ask_meetings else "", limit=graph_k) if ask_meetings else []
 
         if not ask_tasks and not ask_decisions and not ask_people and not ask_meetings:
-            # 일반 질문은 요약 컨텍스트 최소치만 유지
             tasks = self.graph_search_tasks(db, limit=min(3, graph_k))
             decisions = self.graph_search_decisions(db, limit=min(3, graph_k))
 
@@ -232,7 +231,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
             "meetings": meetings,
         }
 
-        # 3. 통합 컨텍스트 생성 (LLM 프롬프트에 주입할 문자열)
+        # Merge context
         context_parts = []
 
         if vector_results:

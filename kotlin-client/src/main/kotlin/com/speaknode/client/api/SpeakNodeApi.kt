@@ -47,17 +47,11 @@ class SpeakNodeApi(
         }
     }
 
-    // ================================================================
     // Health
-    // ================================================================
-
     suspend fun health(): HealthResponse =
         client.get("$baseUrl/health").body()
 
-    // ================================================================
     // Chat Management
-    // ================================================================
-
     suspend fun listChats(): ChatListResponse =
         client.get("$baseUrl/chats").body()
 
@@ -69,10 +63,7 @@ class SpeakNodeApi(
     suspend fun deleteChat(chatId: String): StatusResponse =
         client.delete("$baseUrl/chats/$chatId").body()
 
-    // ================================================================
     // Audio Analysis
-    // ================================================================
-
     suspend fun analyze(
         audioFile: File,
         chatId: String = "default",
@@ -93,10 +84,7 @@ class SpeakNodeApi(
         ).body()
     }
 
-    // ================================================================
     // Agent Query
-    // ================================================================
-
     suspend fun agentQuery(
         question: String,
         chatId: String = "default",
@@ -105,10 +93,7 @@ class SpeakNodeApi(
             setBody(AgentQueryRequest(question, chatId))
         }.body()
 
-    // ================================================================
     // Meetings
-    // ================================================================
-
     suspend fun listMeetings(
         chatId: String = "default",
     ): MeetingListResponse =
@@ -124,10 +109,7 @@ class SpeakNodeApi(
             parameter("chat_id", chatId)
         }.body()
 
-    // ================================================================
     // Graph
-    // ================================================================
-
     suspend fun exportGraph(
         chatId: String = "default",
         includeEmbeddings: Boolean = false,
@@ -145,10 +127,7 @@ class SpeakNodeApi(
             setBody(GraphImportRequest(chatId, graphDump))
         }.body()
 
-    // ================================================================
     // Node Update
-    // ================================================================
-
     suspend fun updateNode(
         chatId: String = "default",
         nodeType: String,
@@ -159,10 +138,7 @@ class SpeakNodeApi(
             setBody(NodeUpdateRequest(chatId, nodeType, nodeId, fields))
         }.body()
 
-    // ================================================================
     // Lifecycle
-    // ================================================================
-
     override fun close() {
         client.close()
     }

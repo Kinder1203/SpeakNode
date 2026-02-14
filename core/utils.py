@@ -6,7 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# -- Task status normalisation --
+# Task status normalisation 
 
 ALLOWED_TASK_STATUSES: frozenset[str] = frozenset(
     {"pending", "in_progress", "done", "blocked"}
@@ -30,7 +30,7 @@ def normalize_task_status(raw: str) -> str:
     return normalized if normalized in ALLOWED_TASK_STATUSES else "pending"
 
 
-# -- LLM context window helpers --
+# LLM context window helpers 
 
 # Conservative estimate: ~2 chars/token for mixed Korean/English text.
 _CHARS_PER_TOKEN_ESTIMATE = 2

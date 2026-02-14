@@ -56,7 +56,7 @@ fun App() {
             snackbarHost = { SnackbarHost(snackbarHostState) },
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
-                // --- Sidebar ---
+                // Sidebar 
                 Sidebar(
                     serverStatus = serverStatus,
                     chatIds = chatIds,
@@ -78,7 +78,7 @@ fun App() {
 
                 VerticalDivider()
 
-                // --- Content ---
+                // Content 
                 when (activeScreen) {
                     "meetings" -> MeetingScreen(
                         meetings = meetings,

@@ -36,7 +36,7 @@ fun MeetingScreen(
     Column(
         modifier = modifier.fillMaxSize().padding(24.dp),
     ) {
-        // --- Header ---
+        // Header 
         Text(
             text = "Meetings",
             style = MaterialTheme.typography.headlineLarge,
@@ -48,7 +48,7 @@ fun MeetingScreen(
 
         Spacer(Modifier.height(20.dp))
 
-        // --- Upload Section ---
+        // Upload Section 
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -114,7 +114,7 @@ fun MeetingScreen(
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
 
-        // --- Meeting List ---
+        // Meeting List 
         Text(
             text = "회의 목록 (${meetings.size}건)",
             style = MaterialTheme.typography.titleMedium,

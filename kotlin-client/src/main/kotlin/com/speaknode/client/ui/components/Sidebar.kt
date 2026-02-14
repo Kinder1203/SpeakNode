@@ -45,7 +45,7 @@ fun Sidebar(
             .background(MaterialTheme.colorScheme.surface)
             .padding(12.dp),
     ) {
-        // --- Header ---
+        // Header 
         Text(
             text = "🧠 SpeakNode",
             style = MaterialTheme.typography.headlineMedium,
@@ -58,7 +58,7 @@ fun Sidebar(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         Spacer(Modifier.height(12.dp))
 
-        // --- Navigation ---
+        // Navigation 
         Text("NAVIGATION", style = MaterialTheme.typography.labelMedium)
         Spacer(Modifier.height(4.dp))
 
@@ -73,7 +73,7 @@ fun Sidebar(
         HorizontalDivider(color = MaterialTheme.colorScheme.outline)
         Spacer(Modifier.height(12.dp))
 
-        // --- Chat Sessions ---
+        // Chat Sessions 
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),

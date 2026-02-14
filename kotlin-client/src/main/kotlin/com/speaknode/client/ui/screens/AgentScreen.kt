@@ -45,7 +45,7 @@ fun AgentScreen(
     }
 
     Column(modifier = modifier.fillMaxSize().padding(24.dp)) {
-        // --- Header ---
+        // Header 
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
@@ -70,7 +70,7 @@ fun AgentScreen(
 
         Spacer(Modifier.height(16.dp))
 
-        // --- Messages ---
+        // Messages 
         LazyColumn(
             state = listState,
             modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -125,7 +125,7 @@ fun AgentScreen(
 
         Spacer(Modifier.height(12.dp))
 
-        // --- Input ---
+        // Input 
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),

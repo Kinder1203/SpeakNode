@@ -19,10 +19,7 @@ from core.db.kuzu_manager import KuzuManager, decode_scoped_value
 from core.pipeline import SpeakNodeEngine
 from core.utils import ALLOWED_TASK_STATUSES
 
-# -----------------------------------------------------------------------------
 # Runtime Configuration
-# -----------------------------------------------------------------------------
-
 logger = logging.getLogger("speaknode.api")
 if not logger.handlers:
     logging.basicConfig(
@@ -49,10 +46,7 @@ _chat_locks: dict[str, asyncio.Lock] = {}
 _chat_locks_guard = asyncio.Lock()
 
 
-# -----------------------------------------------------------------------------
 # Request Models
-# -----------------------------------------------------------------------------
-
 class CreateChatRequest(BaseModel):
     chat_id: str = Field(min_length=1)
 
@@ -83,10 +77,7 @@ NODE_UPDATE_RULES: dict[str, dict[str, Any]] = {
 }
 
 
-# -----------------------------------------------------------------------------
 # Helper Functions
-# -----------------------------------------------------------------------------
-
 def _normalize_chat_id(raw: str) -> str:
     return sanitize_chat_id(raw or "default")
 
@@ -166,10 +157,7 @@ def _graph_dump_element_count(graph_dump: dict[str, Any]) -> int:
     return total
 
 
-# -----------------------------------------------------------------------------
 # Lifespan / App
-# -----------------------------------------------------------------------------
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global engine
@@ -194,7 +182,7 @@ app = FastAPI(
     description="Local meeting analysis API (STT + Graph DB + Agent)",
 )
 
-# --- CORS ---
+# CORS 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=os.environ.get("SPEAKNODE_CORS_ORIGINS", "http://localhost:3000").split(","),
@@ -226,10 +214,7 @@ async def request_size_guard(request: Request, call_next):
     return await call_next(request)
 
 
-# -----------------------------------------------------------------------------
 # Core API
-# -----------------------------------------------------------------------------
-
 @app.post("/analyze")
 async def analyze_audio(
     file: UploadFile = File(...),
@@ -324,10 +309,7 @@ async def reset_chat(chat_id: str):
     return {"status": "success", "chat_id": safe_chat_id, "message": "reset complete"}
 
 
-# -----------------------------------------------------------------------------
 # Agent API
-# -----------------------------------------------------------------------------
-
 @app.post("/agent/query")
 async def agent_query(payload: AgentQueryRequest):
     runtime = _ensure_engine()
@@ -352,10 +334,7 @@ async def agent_query(payload: AgentQueryRequest):
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-# -----------------------------------------------------------------------------
-# Phase 5.1 API (Server Hardening / Production Support)
-# -----------------------------------------------------------------------------
-
+# API (Server Hardening / Production Support)
 @app.get("/meetings")
 async def list_meetings(
     chat_id: str = Query("default"),

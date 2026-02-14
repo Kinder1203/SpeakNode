@@ -7,7 +7,7 @@ import streamlit as st
 
 st.set_page_config(page_title="SpeakNode Dashboard", layout="wide")
 
-import matplotlib  # noqa: E402 — set_page_config 이후 임포트 필요
+import matplotlib  # noqa: E402 — set_page_config Need to import later
 matplotlib.use("Agg")
 
 logger = logging.getLogger("speaknode.app")

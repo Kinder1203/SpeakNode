@@ -65,13 +65,13 @@ class KuzuManager:
             raise
         logger.debug("KuzuDB connected: %s", db_path)
 
-    # --- Context Manager ---
+    # Context Manager 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        return False  # 예외를 삼키지 않음
+        return False
 
     def close(self):
         """Release DB resources (Connection then Database)."""
@@ -133,7 +133,6 @@ class KuzuManager:
                 try:
                     self.conn.execute(f"CREATE {table_type} TABLE {definition}")
                 except Exception as e:
-                    # 이미 존재하는 테이블 에러는 무시
                     if "already exists" not in str(e).lower():
                         logger.warning("⚠️ 스키마 생성 중 예외 발생 (%s): %s", definition, e)
 
@@ -312,7 +311,7 @@ class KuzuManager:
         has_embeddings_missing = False
 
         with self._transaction():
-            # Nodes 복원
+            # Nodes restore
             for item in nodes.get("meetings", []):
                 meeting_id = item.get("id", "")
                 if not meeting_id:
@@ -382,7 +381,7 @@ class KuzuManager:
                     },
                 )
 
-            # Edges 복원
+            # Edges resotre
             for item in edges.get("proposed", []):
                 if not item.get("person") or not item.get("topic"):
                     continue
@@ -462,14 +461,14 @@ class KuzuManager:
             with self._transaction():
                 topic_keys_by_plain: dict[str, str] = {}
 
-                # 1. Person 노드 (people 리스트가 있다면)
+                # Person node
                 for p in analysis_result.get("people", []):
                     self.conn.execute(
                         "MERGE (p:Person {name: $name}) ON CREATE SET p.role = $role", 
                         {"name": p['name'], "role": p.get('role', 'Member')}
                     )
 
-                # 2. Topic 노드 및 관계
+                # Topic node and relationship
                 for t in analysis_result.get("topics", []):
                     plain_title = str(t.get("title", "")).strip()
                     scoped_title = build_scoped_value(meeting_id, plain_title)
@@ -485,14 +484,14 @@ class KuzuManager:
                             "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
                             {"name": t['proposer'], "title": scoped_title}
                         )
-                    # Meeting ↔ Topic 연결 (DISCUSSED)
+                    # Meeting ↔ Topic connect
                     if meeting_id:
                         self.conn.execute(
                             "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
                             {"mid": meeting_id, "title": scoped_title}
                         )
 
-                # 3. Task 노드 및 관계
+                # Task node and relationship
                 for task in analysis_result.get("tasks", []):
                     desc_text = str(task.get('description', '')).strip() or "No Description"
                     scoped_desc = build_scoped_value(meeting_id, desc_text)
@@ -517,7 +516,7 @@ class KuzuManager:
                             {"mid": meeting_id, "task_desc": scoped_desc},
                         )
 
-                # 4. Decision 노드 및 관계
+                # Decision node and relationship
                 for d in analysis_result.get("decisions", []):
                     desc_text = str(d.get('description', '')).strip() or "No Description"
                     scoped_desc = build_scoped_value(meeting_id, desc_text)
@@ -773,7 +772,7 @@ class KuzuManager:
     def search_similar_utterances(self, query_vector: list[float], top_k: int = 5) -> list[dict]:
         """Cosine similarity search over utterance embeddings."""
         try:
-            # KuzuDB 0.11+ HNSW 벡터 검색 시도
+            # KuzuDB 0.11+ HNSW Vector search attempt
             rows = self.execute_cypher(
                 """
                 MATCH (u:Utterance)

@@ -18,27 +18,27 @@ class AppViewModel(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // --- Server connection status ---
+    // Server connection status 
     private val _serverStatus = MutableStateFlow<ServerStatus>(ServerStatus.Unknown)
     val serverStatus: StateFlow<ServerStatus> = _serverStatus.asStateFlow()
 
-    // --- Chat list ---
+    // Chat list 
     private val _chatIds = MutableStateFlow<List<String>>(emptyList())
     val chatIds: StateFlow<List<String>> = _chatIds.asStateFlow()
 
-    // --- Active chat ID ---
+    // Active chat ID 
     private val _activeChatId = MutableStateFlow("default")
     val activeChatId: StateFlow<String> = _activeChatId.asStateFlow()
 
-    // --- Meeting list ---
+    // Meeting list 
     private val _meetings = MutableStateFlow<List<MeetingSummary>>(emptyList())
     val meetings: StateFlow<List<MeetingSummary>> = _meetings.asStateFlow()
 
-    // --- Analysis state ---
+    // Analysis state 
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState.asStateFlow()
 
-    // --- Error message ---
+    // Error message 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
@@ -47,10 +47,7 @@ class AppViewModel(
         loadChats()
     }
 
-    // ================================================================
     // Actions
-    // ================================================================
-
     fun checkServerHealth() {
         scope.launch {
             _serverStatus.value = ServerStatus.Connecting
@@ -148,10 +145,7 @@ class AppViewModel(
     }
 }
 
-// ================================================================
 // State Types
-// ================================================================
-
 sealed class ServerStatus {
     data object Unknown : ServerStatus()
     data object Connecting : ServerStatus()

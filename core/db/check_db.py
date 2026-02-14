@@ -16,7 +16,6 @@ _NODE_TABLES = ["Person", "Topic", "Task", "Decision", "Utterance", "Meeting"]
 
 
 def check_database(chat_id: str | None = None) -> None:
-    """*chat_id* 하나 또는 전체 DB를 점검한다."""
     config = SpeakNodeConfig()
 
     if chat_id:
@@ -44,12 +43,12 @@ def _check_single(chat_id: str, config: SpeakNodeConfig) -> None:
         with KuzuManager(db_path=db_path, config=config) as db:
             print("    ✅ DB 연결 성공")
 
-            # 1) 테이블 목록
+            # table list
             print("\n    --- 테이블 목록 ---")
             for row in db.execute_cypher("CALL show_tables() RETURN *"):
                 print(f"        📄 {row}")
 
-            # 2) 노드 카운트
+            # node count
             print("\n    --- 노드 카운트 ---")
             for table in _NODE_TABLES:
                 try:
@@ -57,9 +56,9 @@ def _check_single(chat_id: str, config: SpeakNodeConfig) -> None:
                     count = rows[0][0] if rows else 0
                     print(f"        📊 {table}: {count}개")
                 except Exception:
-                    pass  # 테이블 미존재 시 무시
+                    pass
 
-            # 3) Topic 샘플
+            # Topic sample
             print("\n    --- Topic 데이터 ---")
             topics = db.execute_cypher("MATCH (t:Topic) RETURN t.title, t.summary")
             if not topics:

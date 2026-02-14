@@ -3,10 +3,7 @@ package com.speaknode.client.api.models
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-// ================================================================
 // Request Models
-// ================================================================
-
 @Serializable
 data class CreateChatRequest(
     @SerialName("chat_id") val chatId: String,
@@ -32,10 +29,7 @@ data class GraphImportRequest(
     @SerialName("graph_dump") val graphDump: Map<String, kotlinx.serialization.json.JsonElement>,
 )
 
-// ================================================================
 // Response Models
-// ================================================================
-
 @Serializable
 data class StatusResponse(
     val status: String,

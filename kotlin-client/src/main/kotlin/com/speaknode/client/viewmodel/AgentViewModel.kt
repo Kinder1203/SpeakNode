@@ -17,11 +17,11 @@ class AgentViewModel(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    // --- Conversation history ---
+    // Conversation history 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
-    // --- Loading state ---
+    // Loading state 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 

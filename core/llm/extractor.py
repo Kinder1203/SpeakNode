@@ -104,7 +104,7 @@ Hard rules:
         
         people_list = [Person(name=p, role="Member") for p in people_set]
 
-        # Conservative safety net: transcript 신호가 없으면 결과를 비웁니다.
+        # Conservative safety net based on transcript cues
         if not self._has_decision_signal(transcript):
             decisions = []
         if not self._has_task_signal(transcript):
