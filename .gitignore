@@ -1,52 +1,63 @@
-# Python virtual environments
+# Virtual environments
 venv/
 env/
 .venv/
 
-# Python cache/compiled artifacts
+# Cache / compiled artifacts
 __pycache__/
 *.py[cod]
 *.pyo
+*.egg-info/
+dist/
+build/
 
-# Test/lint/type-check caches
+# Test / lint / type-check caches
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .coverage
 htmlcov/
 
-# Environment files (keep example files trackable)
+# Environment
 .env
 .env.*
 !.env.example
 
-# Local databases and generated data
+# Local databases & generated data 
 database/
 *.kuzu
 *.sqlite
 *.sqlite3
 *.db
 
-# Media/generated uploads
+# Media / uploads
 temp_uploads/
-shared_cards/
 *.mp3
 *.wav
 *.m4a
 
-# Generated images (shared_cards only — assets/ PNGs are tracked)
-shared_cards/*.png
+# Shared cards output
+shared_cards/
 
-# Logs and temp files
+# Logs & temp files 
 *.log
 *.tmp
 *.bak
 
-# Editor/OS noise
+# Kotlin / Gradle 
+kotlin-client/.gradle/
+kotlin-client/build/
+kotlin-client/out/
+kotlin-client/gradle/wrapper/gradle-wrapper.jar
+kotlin-client/local.properties
+
+# Editor / OS noise 
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
 *.swp
+*~
 
-# Gemini agent artifacts
+# AI agent artifacts 
 .gemini/

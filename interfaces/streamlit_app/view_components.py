@@ -2,6 +2,8 @@ import io
 import json
 import logging
 import os
+import base64
+import zlib
 
 import matplotlib.pyplot as plt
 import networkx as nx

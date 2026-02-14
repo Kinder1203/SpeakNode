@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
 """
-SpeakNode Phase 5.1 API smoke test.
-
 Usage:
   python scripts/api_smoke_test.py --base-url http://127.0.0.1:8000
   python scripts/api_smoke_test.py --base-url http://127.0.0.1:8000 --audio ./sample.wav

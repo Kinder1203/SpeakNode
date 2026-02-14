@@ -1,0 +1,16 @@
+# Line endings — LF normalisation (Kotlin client targets Linux/macOS/Windows)
+* text=auto eol=lf
+*.kt         text eol=lf
+*.kts        text eol=lf
+*.properties text eol=lf
+
+# Binary files
+*.png  binary
+*.jpg  binary
+*.mp3  binary
+*.wav  binary
+*.m4a  binary
+*.kuzu binary
+
+# Vendored JS/CSS — exclude from diffs and language stats
+lib/**  linguist-vendored
