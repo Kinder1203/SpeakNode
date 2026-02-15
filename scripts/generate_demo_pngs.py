@@ -10,10 +10,8 @@ Usage:
     python scripts/generate_demo_pngs.py
 """
 
-import json
 import os
 import sys
-import textwrap
 
 # ── project root를 sys.path에 추가 ──
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -471,170 +469,27 @@ DEMO_BUNDLES = [
 
 
 # ══════════════════════════════════════════════════════════════
-# Card Renderer (Pillow — ShareManager 스타일 확장)
+# PNG 생성 — ShareManager.create_card() 활용
 # ══════════════════════════════════════════════════════════════
-from PIL import Image, ImageDraw, ImageFont  # noqa: E402
-from PIL.PngImagePlugin import PngInfo  # noqa: E402
-
-
-def _get_fonts():
-    """OS-aware 폰트 로딩. CJK(한글) 지원 우선."""
-    candidates = []
-    if os.name == "nt":
-        candidates = [
-            "C:/Windows/Fonts/malgun.ttf",       # 맑은 고딕
-            "C:/Windows/Fonts/NanumGothic.ttf",
-        ]
-    else:
-        candidates = [
-            "/usr/share/fonts/truetype/nanum/NanumGothic.ttf",
-            "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        ]
-
-    font_path = None
-    for p in candidates:
-        if os.path.exists(p):
-            font_path = p
-            break
-
-    if font_path:
-        return {
-            "title": ImageFont.truetype(font_path, 28),
-            "heading": ImageFont.truetype(font_path, 16),
-            "body": ImageFont.truetype(font_path, 13),
-            "small": ImageFont.truetype(font_path, 11),
-            "mono": ImageFont.truetype(font_path, 10),
-        }
-    else:
-        # Fallback — CJK 깨질 수 있음
-        default = ImageFont.load_default()
-        return {"title": default, "heading": default, "body": default, "small": default, "mono": default}
-
-
-STATUS_COLORS = {
-    "pending": (245, 158, 11),
-    "in_progress": (6, 182, 212),
-    "done": (34, 197, 94),
-    "blocked": (239, 68, 68),
-}
-BADGE_DEFS = [
-    ("Topics", "topics", (34, 197, 94)),
-    ("People", "people", (168, 85, 247)),
-    ("Tasks", "tasks", (245, 158, 11)),
-    ("Decisions", "decisions", (244, 114, 182)),
-    ("Entities", "entities", (236, 72, 153)),
-]
-
-
-def draw_card(bundle: dict) -> Image.Image:
-    """번들 데이터를 Pillow로 시각화한 800×480 카드 이미지를 반환한다."""
-    W, H = 800, 480
-    img = Image.new("RGB", (W, H), color=(15, 15, 35))
-    draw = ImageDraw.Draw(img)
-    fonts = _get_fonts()
-
-    ar = bundle["analysis_result"]
-    meta = bundle["meta"]
-
-    # ── 배경 그리드 ──
-    for x in range(0, W, 32):
-        draw.line([(x, 0), (x, H)], fill=(96, 165, 250, 8), width=1)
-    for y in range(0, H, 32):
-        draw.line([(0, y), (W, y)], fill=(96, 165, 250, 8), width=1)
-
-    # ── 상단 악센트 라인 ──
-    draw.rectangle([(0, 0), (W, 3)], fill=(96, 165, 250))
-
-    # ── 타이틀 ──
-    draw.text((30, 18), f"{meta['icon']}  {meta['title']}", fill=(229, 231, 235), font=fonts["title"])
-
-    # ── 브랜딩 ──
-    draw.text((W - 130, 14), "SpeakNode", fill=(96, 165, 250), font=fonts["heading"])
-    draw.text((W - 152, 34), "Knowledge Graph", fill=(96, 165, 250, 80), font=fonts["small"])
-
-    # ── Stats 뱃지 ──
-    bx = 30
-    by = 68
-    for label, key, color in BADGE_DEFS:
-        count = len(ar.get(key, []))
-        if count == 0:
-            continue
-        text = f"{label} {count}"
-        tw = draw.textlength(text, font=fonts["small"]) + 20
-        # 뱃지 배경
-        draw.rounded_rectangle([(bx, by), (bx + tw, by + 20)], radius=4, fill=(*color, 30), outline=(*color, 80))
-        # 점
-        draw.ellipse([(bx + 6, by + 6), (bx + 13, by + 13)], fill=color)
-        # 텍스트
-        draw.text((bx + 17, by + 3), text, fill=(209, 213, 219), font=fonts["small"])
-        bx += tw + 10
-
-    # ── 구분선 ──
-    draw.line([(30, 100), (W - 30, 100)], fill=(255, 255, 255, 15), width=1)
-
-    # ── Topics ──
-    y = 115
-    draw.text((30, y), "Topics", fill=(34, 197, 94), font=fonts["heading"])
-    y += 24
-    for t in (ar.get("topics") or [])[:3]:
-        draw.ellipse([(36, y + 4), (42, y + 10)], fill=(34, 197, 94))
-        draw.text((50, y), t["title"], fill=(229, 231, 235), font=fonts["body"])
-        y += 18
-        if t.get("summary"):
-            lines = textwrap.wrap(t["summary"], width=60)
-            for line in lines[:2]:
-                draw.text((50, y), line, fill=(107, 114, 128), font=fonts["small"])
-                y += 15
-        y += 6
-
-    # ── Tasks (남는 공간에) ──
-    if y < H - 120 and ar.get("tasks"):
-        y += 4
-        draw.text((30, y), "Tasks", fill=(245, 158, 11), font=fonts["heading"])
-        y += 24
-        for t in (ar.get("tasks") or [])[:4]:
-            if y > H - 60:
-                break
-            sc = STATUS_COLORS.get(t.get("status", "pending"), (245, 158, 11))
-            draw.ellipse([(36, y + 4), (42, y + 10)], fill=sc)
-            task_text = f"{t['description']}  →  {t.get('assignee', '?')}"
-            draw.text((50, y), task_text, fill=(209, 213, 219), font=fonts["small"])
-            y += 18
-
-    # ── 하단 바 ──
-    draw.rectangle([(0, H - 32), (W, H)], fill=(0, 0, 0, 100))
-    draw.text(
-        (12, H - 24),
-        "speaknode_graph_bundle_v1  |  schema_version: 3  |  embedded JSON data",
-        fill=(75, 85, 99),
-        font=fonts["mono"],
-    )
-
-    return img
 
 
 def generate_demo_png(bundle: dict, filename: str):
-    """카드 이미지를 그리고 bundle JSON을 tEXt 메타데이터로 임베딩하여 저장."""
+    """ShareManager.create_card()를 사용하여 카드 이미지 + 메타데이터 임베딩 PNG를 생성."""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    img = draw_card(bundle)
+    mgr = ShareManager(output_dir=OUTPUT_DIR)
 
-    # ── bundle 포맷으로 JSON 페이로드 구성 ──
+    # 카드 비주얼에 사용할 분석 결과
+    analysis_result = bundle["analysis_result"]
+
+    # PNG 메타데이터에 임베딩할 전체 번들 페이로드
     payload = {
         "format": "speaknode_graph_bundle_v1",
-        "analysis_result": bundle["analysis_result"],
+        "analysis_result": analysis_result,
         "graph_dump": bundle["graph_dump"],
     }
 
-    # ── PNG metadata 삽입 (ShareManager._encode_payload 동일 방식) ──
-    metadata = PngInfo()
-    metadata.add_text("speaknode_data_zlib_b64", ShareManager._encode_payload(payload))
-
-    save_path = os.path.join(OUTPUT_DIR, filename)
-    img.save(save_path, "PNG", pnginfo=metadata)
-    return save_path
+    return mgr.create_card(analysis_result, filename, payload=payload)
 
 
 # ══════════════════════════════════════════════════════════════

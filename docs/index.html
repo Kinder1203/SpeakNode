@@ -135,7 +135,7 @@
         <!-- Left Panel -->
         <div class="left-panel">
             <h2>Try Demo</h2>
-            <p style="font-size:0.78em;color:#9ca3af;margin:0 0 10px;">데모 카드를 선택하거나 SpeakNode PNG를 업로드하세요</p>
+            <p style="font-size:0.78em;color:#9ca3af;margin:0 0 10px;">Example PNG를 선택하거나 SpeakNode PNG를 업로드하세요</p>
 
             <div class="demo-img-card" id="dc0" onclick="loadDemo(0)">
                 <img src="demos/demo_weekly_meeting.png" alt="주간 기획 회의">
@@ -803,8 +803,7 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover
 dropZone.addEventListener('drop', ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); if(ev.dataTransfer.files.length) handlePngUpload(ev.dataTransfer.files[0]); });
 fileInput.addEventListener('change', ev => { if(ev.target.files.length) handlePngUpload(ev.target.files[0]); });
 
-// ── Load first demo ──
-loadDemo(0);
+// ── 초기 상태: 그래프 비어있음. 사용자가 데모 선택 또는 PNG 업로드 시 렌더링 시작 ──
 </script>
 </body>
 </html>
