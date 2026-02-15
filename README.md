@@ -8,7 +8,7 @@ SpeakNode processes meeting audio files through a fully local pipeline:
 
 1. **Transcribe** — Convert speech to text with timestamps via Faster-Whisper (optional pyannote speaker diarization)
 2. **Embed** — Generate utterance embeddings (all-MiniLM-L6-v2, 384 dimensions)
-3. **Extract** — Structure topics, decisions, tasks, and people using Ollama + LangChain (conservative Korean signal-based extraction)
+3. **Extract** — Structure topics, decisions, tasks, people, entities, and relations using Ollama + LangChain (comprehensive entity extraction + conservative Korean signal-based filtering)
 4. **Store** — Persist meeting data as a knowledge graph in KuzuDB (meeting-scoped keys)
 5. **Query** — Answer questions via Hybrid RAG (vector + graph + Cypher) and a LangGraph agent
 6. **Share** — Export/import graph snapshots embedded in PNG metadata (zlib + base64)
@@ -22,9 +22,9 @@ All data stays on your machine.
 | STT | Faster-Whisper 1.2.1 speech recognition with speaker timestamps (Whisper large-v3) |
 | Speaker Diarization | Optional pyannote.audio 3.3.0 speaker separation |
 | Embedding | Sentence-Transformers 5.2.2 (all-MiniLM-L6-v2, 384d) |
-| Extraction | Ollama + LangChain 1.2.10 structured extraction (topics, tasks, decisions, people) |
-| Graph DB | KuzuDB 0.11.3 with node/relationship storage and utterance vector embeddings |
-| Search | Hybrid RAG combining vector similarity, graph traversal, and Cypher queries |
+| Extraction | Ollama + LangChain 1.2.10 structured extraction (topics, tasks, decisions, people, entities, relations) |
+| Graph DB | KuzuDB 0.11.3 with 7 node types, 12 relationship types, Entity/Relation support (schema v3), and utterance vector embeddings |
+| Search | Hybrid RAG combining vector similarity, graph traversal, Cypher queries, and Entity search |
 | Cypher Search | Natural language to read-only Cypher translation with forbidden token validation |
 | Agent | LangGraph 1.0.8 agent with 7 tools (search, summary, email draft, Cypher, direct answer) |
 | Sharing | Compressed graph dump embedded in PNG metadata (`speaknode_graph_bundle_v1` format) |
@@ -91,7 +91,7 @@ export SPEAKNODE_CORS_ORIGINS="http://localhost:3000,http://localhost:8080"
 | Tool | Description |
 |---|---|
 | `search_by_meaning` | Vector-based semantic search (Utterance cosine similarity) |
-| `search_by_structure` | Structural graph traversal (topic/task/decision/person/meeting) |
+| `search_by_structure` | Structural graph traversal (topic/task/decision/person/meeting/entity) |
 | `hybrid_search` | Combined semantic + structural search |
 | `search_by_cypher` | NL → read-only Cypher translation + execution |
 | `get_meeting_summary` | Meeting summary retrieval |
@@ -123,22 +123,22 @@ SpeakNode/
 ├── core/
 │   ├── __init__.py
 │   ├── config.py              # Central configuration + chat session utilities
-│   ├── domain.py              # Pydantic domain models
+│   ├── domain.py              # Pydantic domain models (Entity, Relation, etc.)
 │   ├── utils.py               # Shared utilities (task status normalization, LLM token estimation)
 │   ├── embedding.py           # SentenceTransformer singleton cache
 │   ├── pipeline.py            # SpeakNodeEngine: STT → Embed → LLM → DB pipeline
 │   ├── stt/
 │   │   └── transcriber.py     # Faster-Whisper STT + optional pyannote diarization
 │   ├── llm/
-│   │   └── extractor.py       # LangChain/Ollama structured extraction
+│   │   └── extractor.py       # LangChain/Ollama structured extraction (entities, relations, topics, tasks, decisions)
 │   ├── db/
-│   │   ├── kuzu_manager.py    # KuzuDB unified manager (schema, CRUD, vector search, export/import)
+│   │   ├── kuzu_manager.py    # KuzuDB unified manager (schema v3, Entity/Relation CRUD, vector search, export/import)
 │   │   └── check_db.py        # DB diagnostic CLI script
 │   ├── shared/
 │   │   └── share_manager.py   # PNG metadata graph sharing (zlib + base64)
 │   └── agent/
 │       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer)
-│       ├── hybrid_rag.py      # Hybrid RAG engine (vector + graph + Cypher)
+│       ├── hybrid_rag.py      # Hybrid RAG engine (vector + graph + Cypher + Entity search)
 │       └── tools/
 │           ├── __init__.py    # Decorator-based ToolRegistry
 │           ├── search_tools.py

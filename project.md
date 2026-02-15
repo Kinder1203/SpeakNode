@@ -24,7 +24,7 @@ Local meeting knowledge extraction and agent-based retrieval system.
 | Embedding | Sentence-Transformers | 5.2.2 | Utterance vectorization (all-MiniLM-L6-v2, 384d) |
 | LLM | Ollama + LangChain | 1.2.10 | Information extraction and response generation |
 | Agent | LangGraph | 1.0.8 | Router-Tool-Synthesizer flow |
-| DB | KuzuDB | 0.11.3 | Graph + vector storage (cosine similarity) |
+| DB | KuzuDB | 0.11.3 | Graph + vector storage (cosine similarity), Entity/Relation support (schema v3) |
 | Data Model | Pydantic | 2.12.5 | Domain model validation |
 | API | FastAPI + Uvicorn | 0.129.0 / 0.40.0 | Python service layer |
 | UI (Python) | Streamlit + PyVis | 1.54.0 / 0.3.2 | Operation UI + graph visualization |
@@ -37,7 +37,7 @@ Local meeting knowledge extraction and agent-based retrieval system.
 
 1. **Transcribe** — Convert audio to utterance segments (optional speaker diarization)
 2. **Embed** — Generate utterance embeddings (all-MiniLM-L6-v2, 384d)
-3. **Extract** — Structure topics, decisions, tasks, and people (conservative Korean signal-based extraction)
+3. **Extract** — Structure topics, decisions, tasks, people, entities, and relations (conservative Korean signal-based extraction + comprehensive entity extraction)
 4. **Ingest** — Store as a meeting-scoped graph (scoped keys: `meeting_id::value`)
 5. **Query** — Hybrid RAG + Agent response (vector + graph + Cypher)
 6. **Cypher Query** — Natural language to read-only Cypher translation (forbidden token validation)
@@ -45,7 +45,7 @@ Local meeting knowledge extraction and agent-based retrieval system.
 
 ## 4. Graph Schema (KuzuDB)
 
-### Nodes (6 tables)
+### Nodes (7 tables)
 
 ```sql
 CREATE NODE TABLE Person(name STRING, role STRING, PRIMARY KEY(name));
@@ -61,9 +61,12 @@ CREATE NODE TABLE Utterance(
   PRIMARY KEY(id)
 );
 CREATE NODE TABLE Meeting(id STRING, title STRING, date STRING, source_file STRING, PRIMARY KEY(id));
+CREATE NODE TABLE Entity(name STRING, entity_type STRING, description STRING, PRIMARY KEY(name));
 ```
 
-### Relationships (9 tables)
+> `Entity.entity_type` values: `person`, `technology`, `organization`, `concept`, `event`
+
+### Relationships (12 tables)
 
 ```sql
 CREATE REL TABLE PROPOSED(FROM Person TO Topic);
@@ -75,11 +78,14 @@ CREATE REL TABLE DISCUSSED(FROM Meeting TO Topic);
 CREATE REL TABLE CONTAINS(FROM Meeting TO Utterance);
 CREATE REL TABLE HAS_TASK(FROM Meeting TO Task);
 CREATE REL TABLE HAS_DECISION(FROM Meeting TO Decision);
+CREATE REL TABLE RELATED_TO(FROM Entity TO Entity, relation_type STRING);
+CREATE REL TABLE MENTIONS(FROM Topic TO Entity);
+CREATE REL TABLE HAS_ENTITY(FROM Meeting TO Entity);
 ```
 
 ### Scoping Strategy
 
-Topic/Task/Decision primary keys use `{meeting_id}::{plain_text}` format to prevent cross-meeting entity collisions. Decoding via `decode_scoped_value()` / `extract_scope_from_value()` utilities.
+Topic/Task/Decision/Entity primary keys use `{meeting_id}::{plain_text}` format to prevent cross-meeting entity collisions. Decoding via `decode_scoped_value()` / `extract_scope_from_value()` utilities.
 
 ## 5. API Scope (FastAPI v5.2.0)
 
@@ -136,22 +142,22 @@ SpeakNode/
 ├── core/
 │   ├── __init__.py
 │   ├── config.py              # Central configuration + chat session utilities
-│   ├── domain.py              # Pydantic domain models (Utterance, Person, Topic, Task, Decision, Meeting, AnalysisResult, MeetingSummary)
+│   ├── domain.py              # Pydantic domain models (Utterance, Person, Topic, Task, Decision, Entity, Relation, Meeting, AnalysisResult, MeetingSummary)
 │   ├── utils.py               # Shared business logic (task status normalization, LLM token estimation/truncation)
 │   ├── embedding.py           # SentenceTransformer singleton cache
 │   ├── pipeline.py            # SpeakNodeEngine: STT → Embed → LLM → DB pipeline (lazy loading, thread-safe)
 │   ├── stt/
 │   │   └── transcriber.py     # Faster-Whisper STT + optional pyannote speaker diarization
 │   ├── llm/
-│   │   └── extractor.py       # LangChain/Ollama structured extraction (conservative Korean signal patterns)
+│   │   └── extractor.py       # LangChain/Ollama structured extraction (topics, tasks, decisions, entities, relations; conservative Korean signal patterns)
 │   ├── db/
-│   │   ├── kuzu_manager.py    # KuzuDB unified manager (schema, CRUD, vector search, export/import, transactions)
+│   │   ├── kuzu_manager.py    # KuzuDB unified manager (schema v3, CRUD, Entity/Relation support, vector search, export/import, transactions)
 │   │   └── check_db.py        # DB diagnostic CLI script
 │   ├── shared/
 │   │   └── share_manager.py   # PNG metadata graph sharing (zlib + base64, speaknode_graph_bundle_v1)
 │   └── agent/
 │       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer, query-scoped DB lifecycle)
-│       ├── hybrid_rag.py      # Hybrid RAG engine (vector + graph + Cypher search)
+│       ├── hybrid_rag.py      # Hybrid RAG engine (vector + graph + Cypher + Entity search)
 │       └── tools/
 │           ├── __init__.py    # Decorator-based ToolRegistry
 │           ├── search_tools.py
@@ -210,20 +216,23 @@ SpeakNode/
 
 - **Context Manager**: Automatic resource release via `with` statement
 - **Manual transactions**: `BEGIN/COMMIT/ROLLBACK` wrapping (`_transaction()`)
-- **Graph dump serialization**: `export_graph_dump()` / `restore_graph_dump()` (schema version 2)
+- **Graph dump serialization**: `export_graph_dump()` / `restore_graph_dump()` (schema version 3)
 - **Vector search**: Built-in `array_cosine_similarity()` function
-- **Legacy compatibility**: Fallback queries for old DBs without HAS_TASK/HAS_DECISION edges
+- **Entity support**: Entity nodes (person/technology/organization/concept/event) with RELATED_TO, MENTIONS, HAS_ENTITY edges
+- **Legacy compatibility**: Fallback queries for old DBs without HAS_TASK/HAS_DECISION/Entity edges
 
 ### Hybrid RAG
 
 - **Vector search**: Cosine similarity-based Utterance retrieval
-- **Graph search**: Entity type-specific structural traversal
+- **Graph search**: Entity type-specific structural traversal (topic/task/decision/person/meeting/entity)
 - **Cypher search**: LLM NL→Cypher generation → read-only validation (`FORBIDDEN_CYPHER_TOKENS`) → execution
-- **Hybrid fusion**: Keyword-based intent detection → combine relevant search results
+- **Entity search**: Entity node retrieval with keyword/type filters + RELATED_TO edge traversal
+- **Hybrid fusion**: Keyword-based intent detection → combine relevant search results (includes entity baseline)
 
 ### LLM Extractor
 
 - **Conservative extraction**: Returns empty arrays for decisions/tasks when Korean signal patterns (`결정|합의|하기로 했...`, `할 일|담당|까지 완료...`) are absent
+- **Entity extraction**: Comprehensive named entity recognition (person, technology, organization, concept, event) with inter-entity relation extraction
 - **Context window management**: Transcript truncation at 27K token limit
 
 ### Share System (`ShareManager`)
