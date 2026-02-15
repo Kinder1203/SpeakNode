@@ -9,6 +9,8 @@ SpeakNode processes meeting audio files through a fully local pipeline:
 
 
 <img src="https://github.com/user-attachments/assets/78766c52-be0b-4068-a446-e045aa883ec4" width="500">
+
+
 web demo - Cypher visualization & summarization only
 
 1. **Transcribe** — Convert speech to text with timestamps via Faster-Whisper (optional pyannote speaker diarization)
