@@ -15,6 +15,13 @@ web demo - Cypher visualization & summarization only
 
 
 
+
+
+
+
+
+
+
 1. **Transcribe** — Convert speech to text with timestamps via Faster-Whisper (optional pyannote speaker diarization)
 2. **Embed** — Generate utterance embeddings (all-MiniLM-L6-v2, 384 dimensions)
 3. **Extract** — Structure topics, decisions, tasks, people, entities, and relations using Ollama + LangChain (comprehensive entity extraction + conservative Korean signal-based filtering)
