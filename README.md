@@ -12,15 +12,7 @@ SpeakNode processes meeting audio files through a fully local pipeline:
 
 
 web demo - Cypher visualization & summarization only
-
-
-
-
-
-
-
-
-
+<br>
 
 1. **Transcribe** — Convert speech to text with timestamps via Faster-Whisper (optional pyannote speaker diarization)
 2. **Embed** — Generate utterance embeddings (all-MiniLM-L6-v2, 384 dimensions)
