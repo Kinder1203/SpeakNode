@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ko">
 
 <head>
     <meta charset="UTF-8">
@@ -7,724 +7,784 @@
     <title>SpeakNode — Knowledge Graph Demo</title>
     <meta name="description" content="Local-first AI meeting knowledge extraction and graph visualization demo">
     <style>
-        body {
-            margin: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: #1a1a1a;
-            color: #ffffff;
-            overflow: hidden;
-        }
+        * { box-sizing: border-box; }
+        body { margin:0; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; background:#0f0f0f; color:#fff; overflow:hidden; }
+        .main-container { display:flex; height:100vh; flex-direction:column; }
 
-        .main-container {
-            display: flex;
-            height: 100vh;
-            flex-direction: column;
-        }
+        /* Header */
+        .header { background:#000; padding:10px 24px; border-bottom:1px solid rgba(255,255,255,0.06); flex-shrink:0; display:flex; align-items:center; justify-content:space-between; }
+        .header h1 { margin:0; font-size:1.4em; font-weight:600; color:#fff; display:flex; align-items:center; gap:8px; }
+        .header h1 .accent { color:#60a5fa; }
+        .header-links a { color:#60a5fa; text-decoration:none; font-size:0.85em; padding:4px 10px; border:1px solid rgba(96,165,250,0.4); border-radius:4px; transition:all .2s; }
+        .header-links a:hover { background:#60a5fa; color:#fff; }
 
-        .header {
-            background: rgba(0, 0, 0, 0.85);
-            padding: 12px 20px;
-            text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            flex-shrink: 0;
-        }
+        /* Content */
+        .content-container { display:flex; flex:1; min-height:0; }
 
-        .header h1 {
-            margin: 0;
-            color: white;
-            font-size: 1.8em;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
+        /* Left Panel */
+        .left-panel { width:300px; background:rgba(0,0,0,0.6); border-right:1px solid rgba(255,255,255,0.06); padding:16px; overflow-y:auto; flex-shrink:0; }
+        .left-panel h2 { margin:0 0 12px; font-size:1.1em; color:#fff; border-bottom:2px solid #60a5fa; padding-bottom:6px; }
+        .section-title { font-size:0.8em; font-weight:600; color:#9ca3af; text-transform:uppercase; letter-spacing:0.5px; margin:16px 0 8px; }
 
-        .header-title-wrap {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            position: relative;
-        }
+        /* Demo Cards */
+        .demo-card { padding:10px 12px; margin:6px 0; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:6px; cursor:pointer; transition:all .2s; }
+        .demo-card:hover { background:rgba(96,165,250,0.1); border-color:rgba(96,165,250,0.3); }
+        .demo-card.active { background:rgba(96,165,250,0.15); border-color:#60a5fa; }
+        .demo-card .dc-icon { font-size:1.2em; margin-right:6px; }
+        .demo-card .dc-title { font-size:0.9em; font-weight:600; color:#e5e7eb; }
+        .demo-card .dc-desc { font-size:0.75em; color:#9ca3af; margin-top:4px; line-height:1.3; }
 
-        .header-links {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            margin-top: 8px;
-        }
+        /* Drop Zone */
+        .drop-zone { margin:8px 0; padding:20px 12px; border:2px dashed rgba(255,255,255,0.15); border-radius:8px; text-align:center; cursor:pointer; transition:all .2s; }
+        .drop-zone:hover, .drop-zone.dragover { border-color:#60a5fa; background:rgba(96,165,250,0.08); }
+        .drop-zone p { margin:4px 0; font-size:0.8em; color:#9ca3af; }
+        .drop-zone .dz-icon { font-size:1.6em; margin-bottom:4px; }
+        .drop-zone input[type=file] { display:none; }
 
-        .header-links a {
-            color: #60a5fa;
-            text-decoration: none;
-            font-size: 0.9em;
-            padding: 5px 10px;
-            border: 1px solid #60a5fa;
-            border-radius: 5px;
-            transition: all 0.3s ease;
-        }
+        /* Collapsible details */
+        details { margin:4px 0; }
+        details summary { cursor:pointer; font-size:0.8em; font-weight:600; color:#9ca3af; padding:6px 0; list-style:none; display:flex; align-items:center; gap:4px; }
+        details summary::before { content:'▸'; font-size:0.7em; transition:transform .2s; }
+        details[open] summary::before { transform:rotate(90deg); }
+        .mini-step { padding:6px 10px; margin:3px 0; background:rgba(96,165,250,0.05); border-radius:4px; border-left:2px solid #60a5fa; font-size:0.75em; color:#d1d5db; line-height:1.4; }
+        .mini-step.purple { background:rgba(168,85,247,0.05); border-color:#a855f7; }
+        .mini-step.green { background:rgba(34,197,94,0.05); border-color:#22c55e; }
+        .mini-step b { color:#fff; }
 
-        .header-links a:hover {
-            background: #60a5fa;
-            color: white;
-        }
+        /* Center Panel */
+        .center-panel { flex:1; position:relative; background:#0a0a0a; }
+        .center-panel #graph-canvas { width:100%; height:100%; }
+        .graph-placeholder { position:absolute; inset:0; display:flex; flex-direction:column; justify-content:center; align-items:center; color:#4b5563; pointer-events:none; }
+        .graph-placeholder .ph-icon { font-size:3em; margin-bottom:12px; }
+        .graph-placeholder p { font-size:0.9em; }
 
-        .content-container {
-            display: flex;
-            flex: 1;
-            overflow: visible;
-            min-height: 0;
-        }
+        /* Right Panel */
+        .right-panel { width:320px; background:rgba(0,0,0,0.6); border-left:1px solid rgba(255,255,255,0.06); padding:16px; overflow-y:auto; flex-shrink:0; }
+        .right-panel h2 { margin:0 0 12px; font-size:1.1em; color:#fff; border-bottom:2px solid #60fae5; padding-bottom:6px; }
 
-        .left-panel {
-            width: 280px;
-            background: rgba(0, 0, 0, 0.7);
-            border-right: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 20px;
-            overflow-y: auto;
-            overflow-x: visible;
-            flex-shrink: 0;
-            min-height: 0;
-            -webkit-overflow-scrolling: touch;
-        }
+        /* Summary Sections */
+        .summary-placeholder { text-align:center; padding:40px 12px; color:#4b5563; font-size:0.85em; }
+        .summary-section { margin:10px 0; }
+        .summary-section h3 { margin:0 0 6px; font-size:0.85em; font-weight:600; display:flex; align-items:center; gap:6px; }
+        .summary-item { padding:6px 10px; margin:3px 0; background:rgba(255,255,255,0.04); border-radius:4px; font-size:0.78em; color:#d1d5db; line-height:1.4; border-left:2px solid transparent; }
+        .summary-item .si-label { color:#9ca3af; font-size:0.9em; }
+        .summary-item.topic { border-color:#22c55e; }
+        .summary-item.decision { border-color:#f472b6; }
+        .summary-item.task { border-color:#f59e0b; }
+        .summary-item.person { border-color:#a855f7; }
+        .summary-item.entity { border-color:#ec4899; }
+        .task-status { display:inline-block; padding:1px 6px; border-radius:3px; font-size:0.85em; font-weight:600; }
+        .task-status.pending { background:rgba(245,158,11,0.15); color:#f59e0b; }
+        .task-status.in_progress { background:rgba(6,182,212,0.15); color:#06b6d4; }
+        .task-status.done { background:rgba(34,197,94,0.15); color:#22c55e; }
+        .task-status.blocked { background:rgba(239,68,68,0.15); color:#ef4444; }
 
-        .center-panel {
-            flex: 1;
-            position: relative;
-            background: #000;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1;
-        }
+        /* Schema Panel (collapsible) */
+        .schema-panel { margin-top:12px; }
+        .schema-panel details summary { color:#60fae5; }
+        .status-badges { display:flex; gap:6px; flex-wrap:wrap; margin:6px 0; }
+        .badge { display:inline-flex; align-items:center; gap:4px; padding:4px 8px; border-radius:6px; font-size:11px; border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.04); }
+        .badge .dot { width:7px; height:7px; border-radius:99px; }
+        .badge.meeting .dot { background:#60a5fa; } .badge.person .dot { background:#a855f7; }
+        .badge.topic .dot { background:#22c55e; } .badge.task .dot { background:#f59e0b; }
+        .badge.decision .dot { background:#f472b6; } .badge.utterance .dot { background:#06b6d4; }
+        .badge.entity .dot { background:#ec4899; }
+        .details-grid { display:grid; grid-template-columns:1fr 1fr; gap:3px 8px; font-size:11px; color:#9ca3af; margin:6px 0; }
 
-        .right-panel {
-            width: 300px;
-            background: rgba(0, 0, 0, 0.7);
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 20px;
-            overflow-y: auto;
-            flex-shrink: 0;
-            z-index: 1;
-        }
+        /* Node Detail */
+        .node-detail-card { background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:10px; margin-top:8px; display:none; }
+        .node-detail-card.visible { display:block; }
+        .node-detail-card h4 { margin:0 0 6px; font-size:0.9em; }
+        .node-detail-card .field { display:flex; justify-content:space-between; padding:3px 0; border-bottom:1px solid rgba(255,255,255,0.04); font-size:0.78em; }
+        .node-detail-card .field-label { color:#6b7280; }
 
-        .guidance {
-            color: #e5e7eb;
-        }
+        /* Utterance Toggle */
+        .utt-toggle { display:flex; align-items:center; gap:6px; margin:6px 0; font-size:0.75em; color:#9ca3af; }
+        .utt-toggle input { accent-color:#06b6d4; }
 
-        .guidance h2 {
-            color: #ffffff;
-            margin-top: 0;
-            font-size: 1.3em;
-            border-bottom: 2px solid #60a5fa;
-            padding-bottom: 8px;
-            margin-bottom: 20px;
-        }
+        /* Status Bar */
+        .status-bar { background:#000; color:#4b5563; padding:6px 16px; font-family:'Courier New',monospace; font-size:0.75em; border-top:1px solid rgba(255,255,255,0.04); flex-shrink:0; }
 
-        .gui-container h2 {
-            color: #ffffff;
-            margin-top: 0;
-            font-size: 1.3em;
-            border-bottom: 2px solid #60fae5;
-            padding-bottom: 8px;
-            margin-bottom: 20px;
-        }
-
-        .step {
-            margin: 10px 0;
-            padding: 10px 12px;
-            background: rgba(96, 165, 250, 0.08);
-            border-radius: 6px;
-            border-left: 2px solid #60a5fa;
-        }
-
-        .step h3 {
-            margin: 0 0 8px 0;
-            color: #ffffff;
-            font-size: 1em;
-        }
-
-        .step p {
-            margin: 4px 0;
-            line-height: 1.4;
-            font-size: 0.85em;
-            color: #d1d5db;
-        }
-
-        .controls-info {
-            background: rgba(168, 85, 247, 0.08);
-            border-left: 2px solid #a855f7;
-        }
-
-        .keyboard-shortcuts {
-            background: rgba(34, 197, 94, 0.08);
-            border-left: 2px solid #22c55e;
-        }
-
-        /* Info tooltip */
-        .info-tip {
-            display: inline-block;
-            position: relative;
-            margin-left: 8px;
-            width: 16px;
-            height: 16px;
-            line-height: 16px;
-            text-align: center;
-            border-radius: 50%;
-            background: #3b82f6;
-            color: #fff;
-            font-size: 12px;
-            cursor: default;
-            user-select: none;
-            z-index: 100000;
-        }
-
-        .info-tip .tooltip {
-            display: none;
-            position: absolute;
-            left: 0;
-            top: calc(100% + 8px);
-            transform: none;
-            background: rgba(0, 0, 0, 0.95);
-            color: #e5e7eb;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            padding: 10px 12px;
-            font-size: 12px;
-            width: 480px;
-            white-space: normal;
-            z-index: 999999;
-            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
-            text-align: left;
-        }
-
-        .info-tip:hover .tooltip {
-            display: block;
-        }
-
-        .status-bar {
-            background: rgba(0, 0, 0, 0.9);
-            color: #60a5fa;
-            padding: 8px 15px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.8em;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            flex-shrink: 0;
-        }
-
-        .canvas-container {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #111111;
-            position: relative;
-        }
-
-        /* Progress & status beautify */
-        .progress-container {
-            width: 100%;
-            height: 18px;
-            background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 999px;
-            overflow: hidden;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35) inset;
-            position: relative;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #60a5fa, #8b5cf6);
-            position: relative;
-            transition: width .15s ease;
-        }
-
-        .progress-text {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 11px;
-            color: #f8fafc;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-            pointer-events: none;
-            white-space: nowrap;
-        }
-
-        .status-badges {
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            margin-top: 8px;
-        }
-
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 6px 10px;
-            border-radius: 8px;
-            font-size: 12px;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(255, 255, 255, 0.06);
-        }
-
-        .badge .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 999px;
-        }
-
-        .badge.meeting .dot {
-            background: #60a5fa;
-            box-shadow: 0 0 3px #60a5fa;
-        }
-
-        .badge.person .dot {
-            background: #a855f7;
-            box-shadow: 0 0 3px #a855f7;
-        }
-
-        .badge.topic .dot {
-            background: #22c55e;
-            box-shadow: 0 0 3px #22c55e;
-        }
-
-        .badge.task .dot {
-            background: #f59e0b;
-            box-shadow: 0 0 3px #f59e0b;
-        }
-
-        .badge.decision .dot {
-            background: #f472b6;
-            box-shadow: 0 0 3px #f472b6;
-        }
-
-        .badge.utterance .dot {
-            background: #06b6d4;
-            box-shadow: 0 0 3px #06b6d4;
-        }
-
-        .badge.entity .dot {
-            background: #ec4899;
-            box-shadow: 0 0 3px #ec4899;
-        }
-
-        .details-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 6px 12px;
-            margin-top: 8px;
-            font-size: 12px;
-            color: #cbd5e1;
-        }
-
-        .details-grid div {
-            opacity: 0.9;
-        }
-
-        /* GUI Panel Styling */
-        .gui-panel {
-            background: rgba(0, 0, 0, 0.8);
-            border-radius: 8px;
-            padding: 15px;
-            min-height: 400px;
-        }
-
-        /* Node detail card */
-        .node-detail-card {
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 8px;
-            padding: 12px;
-            margin-top: 10px;
-            display: none;
-        }
-
-        .node-detail-card.visible {
-            display: block;
-        }
-
-        .node-detail-card h4 {
-            margin: 0 0 8px 0;
-            font-size: 0.95em;
-        }
-
-        .node-detail-card .field {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-            font-size: 0.8em;
-        }
-
-        .node-detail-card .field-label {
-            color: #9ca3af;
-        }
-
-        @media (max-width: 1200px) {
-            .left-panel {
-                width: 250px;
-            }
-
-            .right-panel {
-                width: 280px;
-            }
-        }
-
-        @media (max-width: 768px) {
-            .content-container {
-                flex-direction: column;
-            }
-
-            .left-panel,
-            .right-panel {
-                width: 100%;
-                height: auto;
-                max-height: 200px;
-            }
-
-            .center-panel {
-                flex: 1;
-                min-height: 400px;
-            }
-        }
+        @media (max-width:1100px) { .left-panel{width:260px;} .right-panel{width:280px;} }
+        @media (max-width:768px) { .content-container{flex-direction:column;} .left-panel,.right-panel{width:100%;max-height:180px;} .center-panel{min-height:350px;} }
     </style>
 </head>
 
 <body>
-    <div class="main-container">
-        <!-- Header Section -->
-        <header class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-                <h1 style="margin: 0; flex: 1; text-align: left;">
-                    <span class="header-title-wrap">SpeakNode Knowledge Graph
-                        <span class="info-tip">!
-                            <span class="tooltip" style="max-width: 320px; text-align: left;">SpeakNode는 음성을 분석하여
-                                구조화된 지식 그래프를 생성하는 로컬 우선(Local-first) AI 시스템입니다. 아래 그래프는 실제 스키마 기반의 데모 데이터입니다.
-                            </span>
-                        </span>
-                    </span>
-                </h1>
-                <div class="header-links" style="margin-left: 20px;">
-                    <a href="https://github.com/Kinder1203/SpeakNode" target="_blank">GitHub</a>
-                </div>
+<div class="main-container">
+    <!-- Header -->
+    <header class="header">
+        <h1><span class="accent">SpeakNode</span> Knowledge Graph</h1>
+        <div class="header-links">
+            <a href="https://github.com/Kinder1203/SpeakNode" target="_blank">GitHub</a>
+        </div>
+    </header>
+
+    <div class="content-container">
+        <!-- Left Panel -->
+        <div class="left-panel">
+            <h2>Try Demo</h2>
+            <p style="font-size:0.78em;color:#9ca3af;margin:0 0 10px;">데모 카드를 선택하거나 SpeakNode PNG를 업로드하세요</p>
+
+            <div class="demo-card" onclick="loadDemo(0)" id="dc0">
+                <span class="dc-icon">📅</span><span class="dc-title">주간 기획 회의</span>
+                <div class="dc-desc">API 마이그레이션, RAG 최적화, UI 개선 논의 (4명 참석)</div>
             </div>
-        </header>
-
-        <!-- Main Content Container -->
-        <div class="content-container">
-            <!-- Left Panel: Project Info -->
-            <div class="left-panel">
-                <div class="guidance">
-                    <h2>Overview</h2>
-
-                    <div class="step">
-                        <h3>1. Transcribe</h3>
-                        <p>Faster-Whisper로 음성을 텍스트로 변환 (pyannote 화자 분리 지원)</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>2. Embed</h3>
-                        <p>all-MiniLM-L6-v2 모델로 발화 벡터 임베딩 (384차원)</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>3. Extract</h3>
-                        <p>Ollama + LangChain으로 토픽, 결정, 태스크, 인물, 엔티티, 관계 구조화 추출</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>4. Store</h3>
-                        <p>KuzuDB 그래프 데이터베이스에 회의 스코프 키로 저장</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>5. Query</h3>
-                        <p>Hybrid RAG (벡터 + 그래프 + Cypher) + LangGraph Agent 검색</p>
-                    </div>
-
-                    <div class="step">
-                        <h3>6. Share</h3>
-                        <p>PNG 메타데이터에 그래프 덤프를 압축 내장하여 공유</p>
-                    </div>
-
-                    <div class="step controls-info">
-                        <h3>Graph Controls</h3>
-                        <p><strong>Click:</strong> 노드 상세 정보 보기</p>
-                        <p><strong>Double-click:</strong> 노드 포커스 줌</p>
-                        <p><strong>Drag:</strong> 노드 이동 / 화면 이동</p>
-                        <p><strong>Scroll:</strong> 확대 / 축소</p>
-                    </div>
-
-                    <div class="step keyboard-shortcuts">
-                        <h3>Tech Stack</h3>
-                        <p><strong>Core:</strong> Python 3.10+, KuzuDB, LangGraph</p>
-                        <p><strong>LLM:</strong> Ollama, LangChain</p>
-                        <p><strong>STT:</strong> Faster-Whisper, pyannote</p>
-                        <p><strong>Client:</strong> Kotlin Compose, Ktor</p>
-                        <p><strong>API:</strong> FastAPI, Uvicorn</p>
-                    </div>
-                </div>
+            <div class="demo-card" onclick="loadDemo(1)" id="dc1">
+                <span class="dc-icon">🎓</span><span class="dc-title">AI 기술 세미나</span>
+                <div class="dc-desc">트랜스포머, LLM 학습, 멀티모달 AI 강의 (엔티티 풍부)</div>
+            </div>
+            <div class="demo-card" onclick="loadDemo(2)" id="dc2">
+                <span class="dc-icon">🚀</span><span class="dc-title">프로젝트 온보딩</span>
+                <div class="dc-desc">팀 구조, 기술 스택, 일정 계획 배정 (Task 풍부)</div>
             </div>
 
-            <!-- Center Panel: Graph Visualization -->
-            <div class="center-panel">
-                <div class="canvas-container" id="canvas-container">
-                    <div id="graph-canvas" style="width: 100%; height: 100%;"></div>
-                </div>
+            <div class="section-title">Upload PNG</div>
+            <div class="drop-zone" id="dropZone">
+                <div class="dz-icon">📁</div>
+                <p><b>SpeakNode PNG</b>를 드래그하거나 클릭</p>
+                <p style="font-size:0.7em;color:#6b7280;">PNG 메타데이터에서 그래프를 자동 추출합니다</p>
+                <input type="file" id="fileInput" accept=".png">
             </div>
 
-            <!-- Right Panel: Node Info & Legend -->
-            <div class="right-panel">
-                <div class="gui-container">
-                    <h2>Graph Schema</h2>
-                    <div class="gui-panel" id="gui-container">
-                        <!-- Legend -->
-                        <p style="font-size: 0.85em; color: #9ca3af; margin-bottom: 12px;">SpeakNode KuzuDB 그래프 스키마 기반
-                            데모</p>
-                        <div style="font-size: 0.85em; font-weight: 600; margin-bottom: 8px;">Node Types</div>
-                        <div class="status-badges">
-                            <div class="badge meeting"><span class="dot"></span>Meeting</div>
-                            <div class="badge person"><span class="dot"></span>Person</div>
-                            <div class="badge topic"><span class="dot"></span>Topic</div>
-                            <div class="badge task"><span class="dot"></span>Task</div>
-                            <div class="badge decision"><span class="dot"></span>Decision</div>
-                            <div class="badge utterance"><span class="dot"></span>Utterance</div>
-                            <div class="badge entity"><span class="dot"></span>Entity</div>
-                        </div>
+            <div class="section-title" style="margin-top:14px;">About</div>
+            <details>
+                <summary>Pipeline Overview</summary>
+                <div class="mini-step"><b>1. Transcribe</b> — Faster-Whisper STT + pyannote 화자 분리</div>
+                <div class="mini-step"><b>2. Embed</b> — all-MiniLM-L6-v2 벡터 임베딩 (384d)</div>
+                <div class="mini-step"><b>3. Extract</b> — Ollama + LangChain 구조화 추출</div>
+                <div class="mini-step"><b>4. Store</b> — KuzuDB 그래프 DB 저장</div>
+                <div class="mini-step"><b>5. Query</b> — Hybrid RAG + LangGraph Agent</div>
+                <div class="mini-step"><b>6. Share</b> — PNG 메타데이터 그래프 공유</div>
+            </details>
+            <details>
+                <summary>Graph Controls</summary>
+                <div class="mini-step purple"><b>Click</b> — 노드 상세 정보</div>
+                <div class="mini-step purple"><b>Double-click</b> — 노드 포커스 줌</div>
+                <div class="mini-step purple"><b>Drag</b> — 노드/화면 이동</div>
+                <div class="mini-step purple"><b>Scroll</b> — 확대/축소</div>
+            </details>
+            <details>
+                <summary>Tech Stack</summary>
+                <div class="mini-step green"><b>Core:</b> Python 3.10+, KuzuDB, LangGraph</div>
+                <div class="mini-step green"><b>LLM:</b> Ollama, LangChain</div>
+                <div class="mini-step green"><b>STT:</b> Faster-Whisper, pyannote</div>
+                <div class="mini-step green"><b>Client:</b> Kotlin Compose, Ktor</div>
+                <div class="mini-step green"><b>API:</b> FastAPI, Uvicorn</div>
+            </details>
+        </div>
 
-                        <div style="font-size: 0.85em; font-weight: 600; margin: 16px 0 8px;">Relationships</div>
-                        <div class="details-grid">
-                            <div>DISCUSSED</div>
-                            <div style="color:#60a5fa">Meeting→Topic</div>
-                            <div>PROPOSED</div>
-                            <div style="color:#a855f7">Person→Topic</div>
-                            <div>ASSIGNED_TO</div>
-                            <div style="color:#f59e0b">Person→Task</div>
-                            <div>RESULTED_IN</div>
-                            <div style="color:#f472b6">Topic→Decision</div>
-                            <div>SPOKE</div>
-                            <div style="color:#06b6d4">Person→Utterance</div>
-                            <div>CONTAINS</div>
-                            <div style="color:#60a5fa">Meeting→Utterance</div>
-                            <div>HAS_TASK</div>
-                            <div style="color:#f59e0b">Meeting→Task</div>
-                            <div>HAS_DECISION</div>
-                            <div style="color:#f472b6">Meeting→Decision</div>
-                            <div>NEXT</div>
-                            <div style="color:#06b6d4">Utterance→Utterance</div>
-                            <div>RELATED_TO</div>
-                            <div style="color:#ec4899">Entity→Entity</div>
-                            <div>MENTIONS</div>
-                            <div style="color:#22c55e">Topic→Entity</div>
-                            <div>HAS_ENTITY</div>
-                            <div style="color:#ec4899">Meeting→Entity</div>
-                        </div>
-
-                        <div style="font-size: 0.85em; font-weight: 600; margin: 16px 0 8px;">Statistics</div>
-                        <div class="details-grid">
-                            <div>Nodes</div>
-                            <div id="stat-nodes">—</div>
-                            <div>Edges</div>
-                            <div id="stat-edges">—</div>
-                            <div>Node Types</div>
-                            <div>7</div>
-                            <div>Rel Types</div>
-                            <div>12</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Node Detail -->
-                <div class="node-detail-card" id="node-detail">
-                    <h4 id="detail-title">Select a node</h4>
-                    <div id="detail-fields"></div>
-                </div>
+        <!-- Center Panel -->
+        <div class="center-panel">
+            <div id="graph-canvas"></div>
+            <div class="graph-placeholder" id="graphPlaceholder">
+                <div class="ph-icon">🕸️</div>
+                <p>데모를 선택하거나 PNG를 업로드하세요</p>
             </div>
         </div>
 
-        <!-- Status Bar -->
-        <div class="status-bar" id="status-bar">
-            SpeakNode Knowledge Graph | Nodes: 0 | Edges: 0 | Status: Initializing
+        <!-- Right Panel -->
+        <div class="right-panel">
+            <h2>Summary</h2>
+            <div id="summaryContainer">
+                <div class="summary-placeholder" id="summaryPlaceholder">
+                    <p style="font-size:2em;margin:0;">📋</p>
+                    <p>그래프가 로드되면 요약이 여기에 표시됩니다</p>
+                </div>
+            </div>
+
+            <label class="utt-toggle" id="uttToggleWrap" style="display:none;">
+                <input type="checkbox" id="uttToggle"> Utterance 노드 표시
+            </label>
+
+            <div class="node-detail-card" id="node-detail">
+                <h4 id="detail-title">Select a node</h4>
+                <div id="detail-fields"></div>
+            </div>
+
+            <div class="schema-panel">
+                <details>
+                    <summary>Graph Schema</summary>
+                    <div style="font-size:0.78em;font-weight:600;margin:8px 0 4px;">Node Types</div>
+                    <div class="status-badges">
+                        <div class="badge meeting"><span class="dot"></span>Meeting</div>
+                        <div class="badge person"><span class="dot"></span>Person</div>
+                        <div class="badge topic"><span class="dot"></span>Topic</div>
+                        <div class="badge task"><span class="dot"></span>Task</div>
+                        <div class="badge decision"><span class="dot"></span>Decision</div>
+                        <div class="badge utterance"><span class="dot"></span>Utterance</div>
+                        <div class="badge entity"><span class="dot"></span>Entity</div>
+                    </div>
+                    <div style="font-size:0.78em;font-weight:600;margin:10px 0 4px;">Relationships (12)</div>
+                    <div class="details-grid">
+                        <div>DISCUSSED</div><div style="color:#60a5fa">Meeting→Topic</div>
+                        <div>PROPOSED</div><div style="color:#a855f7">Person→Topic</div>
+                        <div>ASSIGNED_TO</div><div style="color:#f59e0b">Person→Task</div>
+                        <div>RESULTED_IN</div><div style="color:#f472b6">Topic→Decision</div>
+                        <div>SPOKE</div><div style="color:#06b6d4">Person→Utterance</div>
+                        <div>CONTAINS</div><div style="color:#60a5fa">Meeting→Utterance</div>
+                        <div>HAS_TASK</div><div style="color:#f59e0b">Meeting→Task</div>
+                        <div>HAS_DECISION</div><div style="color:#f472b6">Meeting→Decision</div>
+                        <div>NEXT</div><div style="color:#06b6d4">Utterance→Utterance</div>
+                        <div>RELATED_TO</div><div style="color:#ec4899">Entity→Entity</div>
+                        <div>MENTIONS</div><div style="color:#22c55e">Topic→Entity</div>
+                        <div>HAS_ENTITY</div><div style="color:#ec4899">Meeting→Entity</div>
+                    </div>
+                    <div style="font-size:0.78em;font-weight:600;margin:10px 0 4px;">Statistics</div>
+                    <div class="details-grid">
+                        <div>Nodes</div><div id="stat-nodes">—</div>
+                        <div>Edges</div><div id="stat-edges">—</div>
+                        <div>Node Types</div><div>7</div>
+                        <div>Rel Types</div><div>12</div>
+                    </div>
+                </details>
+            </div>
         </div>
     </div>
 
-    <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
-    <script>
-        // Node & Edge Style Definitions
-        const NODE_CFG = {
-            Meeting: { color: '#60a5fa', glow: 'rgba(96,165,250,0.4)', size: 30, icon: '📅' },
-            Person: { color: '#a855f7', glow: 'rgba(168,85,247,0.4)', size: 22, icon: '👤' },
-            Topic: { color: '#22c55e', glow: 'rgba(34,197,94,0.4)', size: 20, icon: '💡' },
-            Task: { color: '#f59e0b', glow: 'rgba(245,158,11,0.4)', size: 18, icon: '✅' },
-            Decision: { color: '#f472b6', glow: 'rgba(244,114,182,0.4)', size: 18, icon: '⚖️' },
-            Utterance: { color: '#06b6d4', glow: 'rgba(6,182,212,0.3)', size: 12, icon: '💬' },
-            Entity: { color: '#ec4899', glow: 'rgba(236,72,153,0.35)', size: 16, icon: '🔗' }
-        };
+    <div class="status-bar" id="status-bar">SpeakNode | Ready</div>
+</div>
 
-        const EDGE_CFG = {
-            DISCUSSED: { color: 'rgba(96,165,250,0.5)', w: 2, dash: false },
-            PROPOSED: { color: 'rgba(168,85,247,0.5)', w: 2, dash: false },
-            ASSIGNED_TO: { color: 'rgba(245,158,11,0.5)', w: 2, dash: [5, 5] },
-            RESULTED_IN: { color: 'rgba(244,114,182,0.5)', w: 2, dash: false },
-            SPOKE: { color: 'rgba(6,182,212,0.35)', w: 1, dash: false },
-            CONTAINS: { color: 'rgba(96,165,250,0.25)', w: 1, dash: [3, 3] },
-            HAS_TASK: { color: 'rgba(245,158,11,0.35)', w: 1.5, dash: false },
-            HAS_DECISION: { color: 'rgba(244,114,182,0.35)', w: 1.5, dash: false },
-            NEXT: { color: 'rgba(6,182,212,0.2)', w: 1, dash: [2, 4] },
-            RELATED_TO: { color: 'rgba(236,72,153,0.4)', w: 1.5, dash: [4, 4] },
-            MENTIONS: { color: 'rgba(34,197,94,0.35)', w: 1, dash: [3, 3] },
-            HAS_ENTITY: { color: 'rgba(236,72,153,0.3)', w: 1, dash: false }
-        };
+<script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script src="https://unpkg.com/pako@2.1.0/dist/pako.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════
+// Node & Edge Style
+// ══════════════════════════════════════════════════════════════
+const NODE_CFG = {
+    Meeting:   {color:'#60a5fa', glow:'rgba(96,165,250,0.3)',  size:28, icon:'📅'},
+    Person:    {color:'#a855f7', glow:'rgba(168,85,247,0.3)',  size:20, icon:'👤'},
+    Topic:     {color:'#22c55e', glow:'rgba(34,197,94,0.3)',   size:18, icon:'💡'},
+    Task:      {color:'#f59e0b', glow:'rgba(245,158,11,0.3)',  size:16, icon:'✅'},
+    Decision:  {color:'#f472b6', glow:'rgba(244,114,182,0.3)', size:16, icon:'⚖️'},
+    Utterance: {color:'#06b6d4', glow:'rgba(6,182,212,0.2)',   size:10, icon:'💬'},
+    Entity:    {color:'#ec4899', glow:'rgba(236,72,153,0.25)', size:14, icon:'🔗'}
+};
+const EDGE_CFG = {
+    DISCUSSED:    {color:'rgba(96,165,250,0.5)',  w:2,   dash:false},
+    PROPOSED:     {color:'rgba(168,85,247,0.5)',  w:2,   dash:false},
+    ASSIGNED_TO:  {color:'rgba(245,158,11,0.5)',  w:2,   dash:[5,5]},
+    RESULTED_IN:  {color:'rgba(244,114,182,0.5)', w:2,   dash:false},
+    SPOKE:        {color:'rgba(6,182,212,0.3)',   w:1,   dash:false},
+    CONTAINS:     {color:'rgba(96,165,250,0.2)',  w:1,   dash:[3,3]},
+    HAS_TASK:     {color:'rgba(245,158,11,0.3)',  w:1.5, dash:false},
+    HAS_DECISION: {color:'rgba(244,114,182,0.3)', w:1.5, dash:false},
+    NEXT:         {color:'rgba(6,182,212,0.15)',  w:1,   dash:[2,4]},
+    RELATED_TO:   {color:'rgba(236,72,153,0.35)', w:1.5, dash:[4,4]},
+    MENTIONS:     {color:'rgba(34,197,94,0.3)',   w:1,   dash:[3,3]},
+    HAS_ENTITY:   {color:'rgba(236,72,153,0.25)', w:1,   dash:false}
+};
 
-        function mkNode(id, label, type, extra) {
-            const c = NODE_CFG[type];
-            return {
-                id, label: c.icon + ' ' + label, group: type,
-                color: {
-                    background: c.glow, border: c.color,
-                    highlight: { background: c.color, border: '#fff' },
-                    hover: { background: c.color, border: '#fff' }
-                },
-                borderWidth: 1.5, borderWidthSelected: 2.5,
-                shadow: { enabled: true, color: c.glow, size: 8, x: 0, y: 0 },
-                font: { color: '#e5e7eb', size: 12, face: "'Segoe UI',sans-serif", strokeWidth: 0 },
-                shape: 'dot', size: c.size,
-                _type: type, _extra: extra || {}
-            };
+function mkNode(id, label, type, extra) {
+    const c = NODE_CFG[type]; if (!c) return null;
+    return {
+        id, label: c.icon+' '+label, group:type,
+        color:{background:c.glow, border:c.color, highlight:{background:c.color,border:'#fff'}, hover:{background:c.color,border:'#fff'}},
+        borderWidth:1.5, borderWidthSelected:2.5,
+        shadow:{enabled:true, color:c.glow, size:6, x:0, y:0},
+        font:{color:'#e5e7eb', size:11, face:"'Segoe UI',sans-serif", strokeWidth:0},
+        shape:'dot', size:c.size, _type:type, _extra:extra||{}
+    };
+}
+function mkEdge(from, to, rel) {
+    const c = EDGE_CFG[rel]||{color:'rgba(255,255,255,0.15)',w:1,dash:false};
+    return {
+        from, to, label:rel,
+        color:{color:c.color, highlight:'#fff', hover:'#fff'},
+        width:c.w, dashes:c.dash,
+        font:{color:'rgba(255,255,255,0.2)', size:7, strokeWidth:0, align:'middle'},
+        smooth:{type:'continuous', roundness:0.3},
+        arrows:{to:{enabled:true, scaleFactor:0.35}},
+        shadow:false
+    };
+}
+
+// Scoped value decoder: "m_xxx::plain text" → "plain text"
+function dv(s) { if (!s) return ''; const i=String(s).indexOf('::'); return i>=0?s.slice(i+2):s; }
+
+// ══════════════════════════════════════════════════════════════
+// Demo Data (3 bundles)
+// ══════════════════════════════════════════════════════════════
+const DEMO_BUNDLES = [
+// ── Demo 0: 주간 기획 회의 ──
+{
+    meta: { title:'주간 기획 회의', icon:'📅', desc:'API 마이그레이션, RAG 최적화, UI 개선 논의 · 4명 참석' },
+    analysis_result: {
+        topics: [
+            {title:'API 서버 마이그레이션', summary:'FastAPI v5.2.0 업그레이드를 이번 주 내로 완료하기로 논의. Ktor 클라이언트도 동시 업데이트 필요.', proposer:'김태호'},
+            {title:'RAG 파이프라인 최적화', summary:'Hybrid RAG의 정확도 개선을 위해 Cypher 쿼리를 추가하고, 벡터 인덱스 벤치마크를 진행하기로 함.', proposer:'이서연'},
+            {title:'모바일 UI 개선', summary:'Material 3 다크 테마를 전면 채택하고, 프로토타입을 2/15까지 완성하기로 함.', proposer:'박준혁'},
+            {title:'그래프 스키마 확장', summary:'감정 분석 노드 추가 가능성 논의. Entity 타입 확장 검토.', proposer:'최유진'}
+        ],
+        decisions: [
+            {description:'API v5.2.0 즉시 마이그레이션 진행', related_topic:'API 서버 마이그레이션'},
+            {description:'Material 3 다크 테마 채택', related_topic:'모바일 UI 개선'}
+        ],
+        tasks: [
+            {description:'Ktor 클라이언트 업데이트', assignee:'이서연', deadline:'2025-02-20', status:'in_progress'},
+            {description:'벡터 인덱스 벤치마크', assignee:'최유진', deadline:'2025-02-18', status:'pending'},
+            {description:'UI 프로토타입 제작', assignee:'박준혁', deadline:'2025-02-15', status:'done'},
+            {description:'Cypher 쿼리 최적화', assignee:'이서연', deadline:'2025-02-22', status:'pending'}
+        ],
+        people: [{name:'김태호',role:'PM'},{name:'이서연',role:'Developer'},{name:'박준혁',role:'Designer'},{name:'최유진',role:'Data Engineer'}],
+        entities: [
+            {name:'FastAPI', entity_type:'technology', description:'Python 비동기 웹 프레임워크'},
+            {name:'KuzuDB', entity_type:'technology', description:'임베디드 그래프 데이터베이스'},
+            {name:'LangChain', entity_type:'technology', description:'LLM 오케스트레이션 프레임워크'},
+            {name:'Hybrid RAG', entity_type:'concept', description:'벡터 + 그래프 + Cypher 결합 검색'},
+            {name:'Material 3', entity_type:'technology', description:'Google 디자인 시스템'}
+        ],
+        relations: [
+            {source:'FastAPI', target:'KuzuDB', relation_type:'통합'},
+            {source:'LangChain', target:'Hybrid RAG', relation_type:'구현 프레임워크'}
+        ]
+    },
+    graph_dump: {
+        schema_version:3,
+        nodes: {
+            meetings: [{id:'m_w01',title:'주간 기획 회의',date:'2025-02-10',source_file:'weekly.wav'},{id:'m_w02',title:'디자인 리뷰',date:'2025-02-12',source_file:'design.mp3'}],
+            people: [{name:'김태호',role:'PM'},{name:'이서연',role:'Developer'},{name:'박준혁',role:'Designer'},{name:'최유진',role:'Data Engineer'}],
+            topics: [{title:'m_w01::API 서버 마이그레이션',summary:'FastAPI v5.2.0 업그레이드 논의'},{title:'m_w01::RAG 파이프라인 최적화',summary:'Hybrid RAG 정확도 개선'},{title:'m_w02::모바일 UI 개선',summary:'Material 3 다크 테마 적용'},{title:'m_w01::그래프 스키마 확장',summary:'감정 분석 노드 추가 논의'}],
+            tasks: [{description:'m_w01::Ktor 클라이언트 업데이트',deadline:'2025-02-20',status:'in_progress'},{description:'m_w01::벡터 인덱스 벤치마크',deadline:'2025-02-18',status:'pending'},{description:'m_w02::UI 프로토타입 제작',deadline:'2025-02-15',status:'done'},{description:'m_w01::Cypher 쿼리 최적화',deadline:'2025-02-22',status:'pending'}],
+            decisions: [{description:'m_w01::API v5.2.0 즉시 마이그레이션'},{description:'m_w02::Material 3 다크 테마 채택'}],
+            utterances: [{id:'u_w01_000000_0000012500',text:'서버 마이그레이션은 이번 주에 시작합시다',start:12.5,end:16.2},{id:'u_w01_000001_0000045100',text:'벡터 검색 성능이 30% 향상되었습니다',start:45.1,end:50.3},{id:'u_w02_000002_0000068000',text:'UI는 Material 3으로 통일하죠',start:68.0,end:72.5},{id:'u_w01_000003_0000091200',text:'RAG에 Cypher 쿼리를 추가했습니다',start:91.2,end:97.8}],
+            entities: [{name:'m_w01::FastAPI',entity_type:'technology',description:'Python 비동기 웹 프레임워크'},{name:'m_w01::KuzuDB',entity_type:'technology',description:'임베디드 그래프 데이터베이스'},{name:'m_w01::LangChain',entity_type:'technology',description:'LLM 오케스트레이션 프레임워크'},{name:'m_w01::Hybrid RAG',entity_type:'concept',description:'벡터 + 그래프 + Cypher 결합 검색'},{name:'m_w02::Material 3',entity_type:'technology',description:'Google 디자인 시스템'}]
+        },
+        edges: {
+            discussed: [{meeting_id:'m_w01',topic:'m_w01::API 서버 마이그레이션'},{meeting_id:'m_w01',topic:'m_w01::RAG 파이프라인 최적화'},{meeting_id:'m_w02',topic:'m_w02::모바일 UI 개선'},{meeting_id:'m_w01',topic:'m_w01::그래프 스키마 확장'}],
+            proposed: [{person:'김태호',topic:'m_w01::API 서버 마이그레이션'},{person:'이서연',topic:'m_w01::RAG 파이프라인 최적화'},{person:'박준혁',topic:'m_w02::모바일 UI 개선'},{person:'최유진',topic:'m_w01::그래프 스키마 확장'}],
+            assigned_to: [{person:'이서연',task:'m_w01::Ktor 클라이언트 업데이트'},{person:'최유진',task:'m_w01::벡터 인덱스 벤치마크'},{person:'박준혁',task:'m_w02::UI 프로토타입 제작'},{person:'이서연',task:'m_w01::Cypher 쿼리 최적화'}],
+            resulted_in: [{topic:'m_w01::API 서버 마이그레이션',decision:'m_w01::API v5.2.0 즉시 마이그레이션'},{topic:'m_w02::모바일 UI 개선',decision:'m_w02::Material 3 다크 테마 채택'}],
+            spoke: [{person:'김태호',utterance_id:'u_w01_000000_0000012500'},{person:'최유진',utterance_id:'u_w01_000001_0000045100'},{person:'박준혁',utterance_id:'u_w02_000002_0000068000'},{person:'이서연',utterance_id:'u_w01_000003_0000091200'}],
+            next: [{from_utterance_id:'u_w01_000000_0000012500',to_utterance_id:'u_w01_000001_0000045100'},{from_utterance_id:'u_w01_000001_0000045100',to_utterance_id:'u_w01_000003_0000091200'}],
+            contains: [{meeting_id:'m_w01',utterance_id:'u_w01_000000_0000012500'},{meeting_id:'m_w01',utterance_id:'u_w01_000001_0000045100'},{meeting_id:'m_w02',utterance_id:'u_w02_000002_0000068000'},{meeting_id:'m_w01',utterance_id:'u_w01_000003_0000091200'}],
+            has_task: [{meeting_id:'m_w01',task:'m_w01::Ktor 클라이언트 업데이트'},{meeting_id:'m_w01',task:'m_w01::벡터 인덱스 벤치마크'},{meeting_id:'m_w02',task:'m_w02::UI 프로토타입 제작'},{meeting_id:'m_w01',task:'m_w01::Cypher 쿼리 최적화'}],
+            has_decision: [{meeting_id:'m_w01',decision:'m_w01::API v5.2.0 즉시 마이그레이션'},{meeting_id:'m_w02',decision:'m_w02::Material 3 다크 테마 채택'}],
+            related_to: [{source:'m_w01::FastAPI',relation_type:'통합',target:'m_w01::KuzuDB'},{source:'m_w01::LangChain',relation_type:'구현 프레임워크',target:'m_w01::Hybrid RAG'}],
+            mentions: [{topic:'m_w01::API 서버 마이그레이션',entity:'m_w01::FastAPI'},{topic:'m_w01::RAG 파이프라인 최적화',entity:'m_w01::Hybrid RAG'},{topic:'m_w01::RAG 파이프라인 최적화',entity:'m_w01::LangChain'},{topic:'m_w02::모바일 UI 개선',entity:'m_w02::Material 3'},{topic:'m_w01::그래프 스키마 확장',entity:'m_w01::KuzuDB'}],
+            has_entity: [{meeting_id:'m_w01',entity:'m_w01::FastAPI'},{meeting_id:'m_w01',entity:'m_w01::KuzuDB'},{meeting_id:'m_w01',entity:'m_w01::LangChain'},{meeting_id:'m_w01',entity:'m_w01::Hybrid RAG'},{meeting_id:'m_w02',entity:'m_w02::Material 3'}]
         }
-
-        function mkEdge(from, to, rel) {
-            const c = EDGE_CFG[rel] || { color: 'rgba(255,255,255,0.2)', w: 1, dash: false };
-            return {
-                from, to, label: rel,
-                color: { color: c.color, highlight: '#fff', hover: '#fff' },
-                width: c.w, dashes: c.dash,
-                font: { color: 'rgba(255,255,255,0.25)', size: 8, strokeWidth: 0, align: 'middle' },
-                smooth: { type: 'continuous', roundness: 0.3 },
-                arrows: { to: { enabled: true, scaleFactor: 0.4 } },
-                shadow: false
-            };
+    }
+},
+// ── Demo 1: AI 기술 세미나 ──
+{
+    meta: { title:'AI 기술 세미나', icon:'🎓', desc:'트랜스포머, LLM 학습, 멀티모달 AI 강의 · Entity 풍부' },
+    analysis_result: {
+        topics: [
+            {title:'트랜스포머 아키텍처의 진화', summary:'2017년 Attention Is All You Need 논문 이후 트랜스포머가 NLP를 넘어 비전, 음성, 멀티모달 분야로 확장된 과정을 설명. Self-Attention 메커니즘이 핵심.', proposer:'정민수'},
+            {title:'대규모 LLM 학습 전략', summary:'GPT-4, LLaMA, Qwen 등 최신 모델들의 학습 기법: RLHF, DPO, MoE 아키텍처 비교. 학습 데이터 규모와 품질의 트레이드오프 분석.', proposer:'정민수'},
+            {title:'멀티모달 AI의 현재와 미래', summary:'GPT-4V, Gemini 등 텍스트+이미지+음성 통합 모델의 발전. 의료, 교육, 로보틱스 적용 사례 소개.', proposer:'정민수'}
+        ],
+        decisions: [],
+        tasks: [{description:'트랜스포머 논문 리뷰 정리', assignee:'최한결', deadline:'2025-03-01', status:'pending'}],
+        people: [{name:'정민수',role:'강연자'},{name:'최한결',role:'참석자'}],
+        entities: [
+            {name:'Transformer', entity_type:'concept', description:'Self-Attention 기반 신경망 아키텍처 (2017)'},
+            {name:'Self-Attention', entity_type:'concept', description:'시퀀스 내 모든 위치 간 관계를 계산하는 메커니즘'},
+            {name:'GPT-4', entity_type:'technology', description:'OpenAI의 대규모 멀티모달 언어 모델'},
+            {name:'LLaMA', entity_type:'technology', description:'Meta의 오픈소스 LLM 시리즈'},
+            {name:'Gemini', entity_type:'technology', description:'Google DeepMind의 멀티모달 AI 모델'},
+            {name:'RLHF', entity_type:'concept', description:'인간 피드백 기반 강화학습 (Reinforcement Learning from Human Feedback)'},
+            {name:'OpenAI', entity_type:'organization', description:'GPT 시리즈 개발 AI 연구소'},
+            {name:'Google DeepMind', entity_type:'organization', description:'Gemini, AlphaFold 개발 연구소'},
+            {name:'MoE', entity_type:'concept', description:'Mixture of Experts — 조건부 연산 아키텍처'}
+        ],
+        relations: [
+            {source:'Transformer', target:'Self-Attention', relation_type:'핵심 구성요소'},
+            {source:'GPT-4', target:'Transformer', relation_type:'기반 아키텍처'},
+            {source:'GPT-4', target:'RLHF', relation_type:'학습 기법'},
+            {source:'OpenAI', target:'GPT-4', relation_type:'개발'},
+            {source:'Google DeepMind', target:'Gemini', relation_type:'개발'},
+            {source:'LLaMA', target:'Transformer', relation_type:'기반 아키텍처'},
+            {source:'Gemini', target:'MoE', relation_type:'사용 아키텍처'}
+        ]
+    },
+    graph_dump: {
+        schema_version:3,
+        nodes: {
+            meetings: [{id:'m_sem01',title:'AI 기술 세미나',date:'2025-03-05',source_file:'seminar.wav'}],
+            people: [{name:'정민수',role:'강연자'},{name:'최한결',role:'참석자'}],
+            topics: [{title:'m_sem01::트랜스포머 아키텍처의 진화',summary:'2017년 Attention Is All You Need 이후 트랜스포머 확장 과정'},{title:'m_sem01::대규모 LLM 학습 전략',summary:'GPT-4, LLaMA, Qwen 학습 기법 비교'},{title:'m_sem01::멀티모달 AI의 현재와 미래',summary:'GPT-4V, Gemini 등 통합 모델 발전'}],
+            tasks: [{description:'m_sem01::트랜스포머 논문 리뷰 정리',deadline:'2025-03-01',status:'pending'}],
+            decisions: [],
+            utterances: [{id:'u_sem01_000000_0000005000',text:'오늘은 트랜스포머의 진화부터 시작하겠습니다',start:5.0,end:9.2},{id:'u_sem01_000001_0000032000',text:'Self-Attention이 트랜스포머의 핵심입니다',start:32.0,end:37.5},{id:'u_sem01_000002_0000085000',text:'GPT-4는 RLHF를 통해 사람의 선호도를 학습합니다',start:85.0,end:92.3},{id:'u_sem01_000003_0000150000',text:'Gemini는 MoE 아키텍처로 효율성을 높였습니다',start:150.0,end:157.0},{id:'u_sem01_000004_0000210000',text:'멀티모달 AI가 의료 분야에서 큰 잠재력을 보입니다',start:210.0,end:217.5}],
+            entities: [{name:'m_sem01::Transformer',entity_type:'concept',description:'Self-Attention 기반 신경망 아키텍처'},{name:'m_sem01::Self-Attention',entity_type:'concept',description:'시퀀스 내 모든 위치 간 관계 계산'},{name:'m_sem01::GPT-4',entity_type:'technology',description:'OpenAI 대규모 멀티모달 LLM'},{name:'m_sem01::LLaMA',entity_type:'technology',description:'Meta 오픈소스 LLM'},{name:'m_sem01::Gemini',entity_type:'technology',description:'Google DeepMind 멀티모달 AI'},{name:'m_sem01::RLHF',entity_type:'concept',description:'인간 피드백 기반 강화학습'},{name:'m_sem01::OpenAI',entity_type:'organization',description:'GPT 시리즈 개발 AI 연구소'},{name:'m_sem01::Google DeepMind',entity_type:'organization',description:'Gemini, AlphaFold 개발'},{name:'m_sem01::MoE',entity_type:'concept',description:'Mixture of Experts 아키텍처'}]
+        },
+        edges: {
+            discussed: [{meeting_id:'m_sem01',topic:'m_sem01::트랜스포머 아키텍처의 진화'},{meeting_id:'m_sem01',topic:'m_sem01::대규모 LLM 학습 전략'},{meeting_id:'m_sem01',topic:'m_sem01::멀티모달 AI의 현재와 미래'}],
+            proposed: [{person:'정민수',topic:'m_sem01::트랜스포머 아키텍처의 진화'},{person:'정민수',topic:'m_sem01::대규모 LLM 학습 전략'},{person:'정민수',topic:'m_sem01::멀티모달 AI의 현재와 미래'}],
+            assigned_to: [{person:'최한결',task:'m_sem01::트랜스포머 논문 리뷰 정리'}],
+            resulted_in: [],
+            spoke: [{person:'정민수',utterance_id:'u_sem01_000000_0000005000'},{person:'정민수',utterance_id:'u_sem01_000001_0000032000'},{person:'정민수',utterance_id:'u_sem01_000002_0000085000'},{person:'정민수',utterance_id:'u_sem01_000003_0000150000'},{person:'정민수',utterance_id:'u_sem01_000004_0000210000'}],
+            next: [{from_utterance_id:'u_sem01_000000_0000005000',to_utterance_id:'u_sem01_000001_0000032000'},{from_utterance_id:'u_sem01_000001_0000032000',to_utterance_id:'u_sem01_000002_0000085000'},{from_utterance_id:'u_sem01_000002_0000085000',to_utterance_id:'u_sem01_000003_0000150000'},{from_utterance_id:'u_sem01_000003_0000150000',to_utterance_id:'u_sem01_000004_0000210000'}],
+            contains: [{meeting_id:'m_sem01',utterance_id:'u_sem01_000000_0000005000'},{meeting_id:'m_sem01',utterance_id:'u_sem01_000001_0000032000'},{meeting_id:'m_sem01',utterance_id:'u_sem01_000002_0000085000'},{meeting_id:'m_sem01',utterance_id:'u_sem01_000003_0000150000'},{meeting_id:'m_sem01',utterance_id:'u_sem01_000004_0000210000'}],
+            has_task: [{meeting_id:'m_sem01',task:'m_sem01::트랜스포머 논문 리뷰 정리'}],
+            has_decision: [],
+            related_to: [{source:'m_sem01::Transformer',relation_type:'핵심 구성요소',target:'m_sem01::Self-Attention'},{source:'m_sem01::GPT-4',relation_type:'기반 아키텍처',target:'m_sem01::Transformer'},{source:'m_sem01::GPT-4',relation_type:'학습 기법',target:'m_sem01::RLHF'},{source:'m_sem01::OpenAI',relation_type:'개발',target:'m_sem01::GPT-4'},{source:'m_sem01::Google DeepMind',relation_type:'개발',target:'m_sem01::Gemini'},{source:'m_sem01::LLaMA',relation_type:'기반 아키텍처',target:'m_sem01::Transformer'},{source:'m_sem01::Gemini',relation_type:'사용 아키텍처',target:'m_sem01::MoE'}],
+            mentions: [{topic:'m_sem01::트랜스포머 아키텍처의 진화',entity:'m_sem01::Transformer'},{topic:'m_sem01::트랜스포머 아키텍처의 진화',entity:'m_sem01::Self-Attention'},{topic:'m_sem01::대규모 LLM 학습 전략',entity:'m_sem01::GPT-4'},{topic:'m_sem01::대규모 LLM 학습 전략',entity:'m_sem01::LLaMA'},{topic:'m_sem01::대규모 LLM 학습 전략',entity:'m_sem01::RLHF'},{topic:'m_sem01::멀티모달 AI의 현재와 미래',entity:'m_sem01::Gemini'},{topic:'m_sem01::멀티모달 AI의 현재와 미래',entity:'m_sem01::MoE'}],
+            has_entity: [{meeting_id:'m_sem01',entity:'m_sem01::Transformer'},{meeting_id:'m_sem01',entity:'m_sem01::Self-Attention'},{meeting_id:'m_sem01',entity:'m_sem01::GPT-4'},{meeting_id:'m_sem01',entity:'m_sem01::LLaMA'},{meeting_id:'m_sem01',entity:'m_sem01::Gemini'},{meeting_id:'m_sem01',entity:'m_sem01::RLHF'},{meeting_id:'m_sem01',entity:'m_sem01::OpenAI'},{meeting_id:'m_sem01',entity:'m_sem01::Google DeepMind'},{meeting_id:'m_sem01',entity:'m_sem01::MoE'}]
         }
+    }
+},
+// ── Demo 2: 프로젝트 온보딩 ──
+{
+    meta: { title:'프로젝트 온보딩', icon:'🚀', desc:'팀 구조, 기술 스택, 일정 계획 배정 · Task 풍부' },
+    analysis_result: {
+        topics: [
+            {title:'팀 구조 소개', summary:'프론트엔드, 백엔드, QA, 디자인 4개 파트 구성. 각 파트별 역할과 협업 방식 안내.', proposer:'한지원'},
+            {title:'기술 스택 가이드', summary:'프론트엔드는 React + TypeScript, 백엔드는 Spring Boot + PostgreSQL, 디자인은 Figma, 프로젝트 관리는 Jira 사용.', proposer:'한지원'},
+            {title:'Q1 일정 계획', summary:'3월 말까지 MVP 완성 목표. 2주 단위 스프린트 운영. 코드 리뷰 필수.', proposer:'한지원'}
+        ],
+        decisions: [
+            {description:'2주 스프린트 사이클 채택', related_topic:'Q1 일정 계획'},
+            {description:'코드 리뷰 필수 정책 시행', related_topic:'Q1 일정 계획'}
+        ],
+        tasks: [
+            {description:'개발 환경 세팅', assignee:'김도현', deadline:'2025-03-10', status:'in_progress'},
+            {description:'API 문서 숙지', assignee:'박소율', deadline:'2025-03-12', status:'pending'},
+            {description:'QA 테스트 케이스 작성', assignee:'오승현', deadline:'2025-03-15', status:'pending'},
+            {description:'디자인 시스템 컴포넌트 정리', assignee:'윤서아', deadline:'2025-03-14', status:'pending'},
+            {description:'Jira 보드 초기 세팅', assignee:'한지원', deadline:'2025-03-08', status:'done'}
+        ],
+        people: [{name:'한지원',role:'팀장'},{name:'김도현',role:'백엔드 개발자'},{name:'박소율',role:'프론트엔드 개발자'},{name:'오승현',role:'QA 엔지니어'},{name:'윤서아',role:'디자이너'}],
+        entities: [
+            {name:'React', entity_type:'technology', description:'Meta의 UI 라이브러리'},
+            {name:'Spring Boot', entity_type:'technology', description:'Java 기반 웹 프레임워크'},
+            {name:'Figma', entity_type:'technology', description:'협업 디자인 도구'},
+            {name:'Jira', entity_type:'technology', description:'Atlassian 프로젝트 관리 도구'},
+            {name:'PostgreSQL', entity_type:'technology', description:'오픈소스 관계형 데이터베이스'},
+            {name:'TypeScript', entity_type:'technology', description:'타입 안전 JavaScript 슈퍼셋'}
+        ],
+        relations: [
+            {source:'React', target:'TypeScript', relation_type:'함께 사용'},
+            {source:'Spring Boot', target:'PostgreSQL', relation_type:'데이터베이스 연동'},
+            {source:'Jira', target:'Figma', relation_type:'작업 연계'}
+        ]
+    },
+    graph_dump: {
+        schema_version:3,
+        nodes: {
+            meetings: [{id:'m_onb01',title:'프로젝트 온보딩',date:'2025-03-07',source_file:'onboarding.wav'}],
+            people: [{name:'한지원',role:'팀장'},{name:'김도현',role:'백엔드 개발자'},{name:'박소율',role:'프론트엔드 개발자'},{name:'오승현',role:'QA 엔지니어'},{name:'윤서아',role:'디자이너'}],
+            topics: [{title:'m_onb01::팀 구조 소개',summary:'4개 파트 구성 및 협업 방식'},{title:'m_onb01::기술 스택 가이드',summary:'React, Spring Boot, Figma, Jira 활용'},{title:'m_onb01::Q1 일정 계획',summary:'3월 말 MVP, 2주 스프린트'}],
+            tasks: [{description:'m_onb01::개발 환경 세팅',deadline:'2025-03-10',status:'in_progress'},{description:'m_onb01::API 문서 숙지',deadline:'2025-03-12',status:'pending'},{description:'m_onb01::QA 테스트 케이스 작성',deadline:'2025-03-15',status:'pending'},{description:'m_onb01::디자인 시스템 컴포넌트 정리',deadline:'2025-03-14',status:'pending'},{description:'m_onb01::Jira 보드 초기 세팅',deadline:'2025-03-08',status:'done'}],
+            decisions: [{description:'m_onb01::2주 스프린트 사이클 채택'},{description:'m_onb01::코드 리뷰 필수 정책 시행'}],
+            utterances: [{id:'u_onb01_000000_0000008000',text:'오늘 온보딩에서 팀 구조부터 설명하겠습니다',start:8.0,end:12.5},{id:'u_onb01_000001_0000045000',text:'프론트는 React와 TypeScript를 씁니다',start:45.0,end:50.2},{id:'u_onb01_000002_0000095000',text:'백엔드는 Spring Boot와 PostgreSQL 사용합니다',start:95.0,end:101.3},{id:'u_onb01_000003_0000140000',text:'3월 말까지 MVP를 완성하는 게 목표입니다',start:140.0,end:146.0}],
+            entities: [{name:'m_onb01::React',entity_type:'technology',description:'Meta UI 라이브러리'},{name:'m_onb01::Spring Boot',entity_type:'technology',description:'Java 웹 프레임워크'},{name:'m_onb01::Figma',entity_type:'technology',description:'협업 디자인 도구'},{name:'m_onb01::Jira',entity_type:'technology',description:'프로젝트 관리 도구'},{name:'m_onb01::PostgreSQL',entity_type:'technology',description:'관계형 DB'},{name:'m_onb01::TypeScript',entity_type:'technology',description:'타입 안전 JS 슈퍼셋'}]
+        },
+        edges: {
+            discussed: [{meeting_id:'m_onb01',topic:'m_onb01::팀 구조 소개'},{meeting_id:'m_onb01',topic:'m_onb01::기술 스택 가이드'},{meeting_id:'m_onb01',topic:'m_onb01::Q1 일정 계획'}],
+            proposed: [{person:'한지원',topic:'m_onb01::팀 구조 소개'},{person:'한지원',topic:'m_onb01::기술 스택 가이드'},{person:'한지원',topic:'m_onb01::Q1 일정 계획'}],
+            assigned_to: [{person:'김도현',task:'m_onb01::개발 환경 세팅'},{person:'박소율',task:'m_onb01::API 문서 숙지'},{person:'오승현',task:'m_onb01::QA 테스트 케이스 작성'},{person:'윤서아',task:'m_onb01::디자인 시스템 컴포넌트 정리'},{person:'한지원',task:'m_onb01::Jira 보드 초기 세팅'}],
+            resulted_in: [{topic:'m_onb01::Q1 일정 계획',decision:'m_onb01::2주 스프린트 사이클 채택'},{topic:'m_onb01::Q1 일정 계획',decision:'m_onb01::코드 리뷰 필수 정책 시행'}],
+            spoke: [{person:'한지원',utterance_id:'u_onb01_000000_0000008000'},{person:'한지원',utterance_id:'u_onb01_000001_0000045000'},{person:'한지원',utterance_id:'u_onb01_000002_0000095000'},{person:'한지원',utterance_id:'u_onb01_000003_0000140000'}],
+            next: [{from_utterance_id:'u_onb01_000000_0000008000',to_utterance_id:'u_onb01_000001_0000045000'},{from_utterance_id:'u_onb01_000001_0000045000',to_utterance_id:'u_onb01_000002_0000095000'},{from_utterance_id:'u_onb01_000002_0000095000',to_utterance_id:'u_onb01_000003_0000140000'}],
+            contains: [{meeting_id:'m_onb01',utterance_id:'u_onb01_000000_0000008000'},{meeting_id:'m_onb01',utterance_id:'u_onb01_000001_0000045000'},{meeting_id:'m_onb01',utterance_id:'u_onb01_000002_0000095000'},{meeting_id:'m_onb01',utterance_id:'u_onb01_000003_0000140000'}],
+            has_task: [{meeting_id:'m_onb01',task:'m_onb01::개발 환경 세팅'},{meeting_id:'m_onb01',task:'m_onb01::API 문서 숙지'},{meeting_id:'m_onb01',task:'m_onb01::QA 테스트 케이스 작성'},{meeting_id:'m_onb01',task:'m_onb01::디자인 시스템 컴포넌트 정리'},{meeting_id:'m_onb01',task:'m_onb01::Jira 보드 초기 세팅'}],
+            has_decision: [{meeting_id:'m_onb01',decision:'m_onb01::2주 스프린트 사이클 채택'},{meeting_id:'m_onb01',decision:'m_onb01::코드 리뷰 필수 정책 시행'}],
+            related_to: [{source:'m_onb01::React',relation_type:'함께 사용',target:'m_onb01::TypeScript'},{source:'m_onb01::Spring Boot',relation_type:'DB 연동',target:'m_onb01::PostgreSQL'},{source:'m_onb01::Jira',relation_type:'작업 연계',target:'m_onb01::Figma'}],
+            mentions: [{topic:'m_onb01::기술 스택 가이드',entity:'m_onb01::React'},{topic:'m_onb01::기술 스택 가이드',entity:'m_onb01::Spring Boot'},{topic:'m_onb01::기술 스택 가이드',entity:'m_onb01::Figma'},{topic:'m_onb01::기술 스택 가이드',entity:'m_onb01::Jira'},{topic:'m_onb01::기술 스택 가이드',entity:'m_onb01::PostgreSQL'},{topic:'m_onb01::기술 스택 가이드',entity:'m_onb01::TypeScript'}],
+            has_entity: [{meeting_id:'m_onb01',entity:'m_onb01::React'},{meeting_id:'m_onb01',entity:'m_onb01::Spring Boot'},{meeting_id:'m_onb01',entity:'m_onb01::Figma'},{meeting_id:'m_onb01',entity:'m_onb01::Jira'},{meeting_id:'m_onb01',entity:'m_onb01::PostgreSQL'},{meeting_id:'m_onb01',entity:'m_onb01::TypeScript'}]
+        }
+    }
+}
+];
 
-        // Demo Data (based on schema)
-        const nodes = new vis.DataSet([
-            mkNode('m1', '주간 기획 회의', 'Meeting', { date: '2025-02-10', source: 'weekly.wav' }),
-            mkNode('m2', '디자인 리뷰', 'Meeting', { date: '2025-02-12', source: 'design.mp3' }),
+// ══════════════════════════════════════════════════════════════
+// State
+// ══════════════════════════════════════════════════════════════
+let network = null;
+let currentNodes = null;
+let currentEdges = null;
+let showUtterances = false;
+let allNodeData = [];
+let allEdgeData = [];
 
-            mkNode('p1', '김태호', 'Person', { role: 'PM' }),
-            mkNode('p2', '이서연', 'Person', { role: 'Developer' }),
-            mkNode('p3', '박준혁', 'Person', { role: 'Designer' }),
-            mkNode('p4', '최유진', 'Person', { role: 'Data Engineer' }),
+// ══════════════════════════════════════════════════════════════
+// Graph Dump → vis-network rendering
+// ══════════════════════════════════════════════════════════════
+function renderFromBundle(bundle) {
+    const dump = bundle.graph_dump;
+    const ar = bundle.analysis_result;
+    const n = dump.nodes, e = dump.edges;
 
-            mkNode('t1', 'API 서버 마이그레이션', 'Topic', { summary: 'FastAPI v5.2.0 업그레이드 논의' }),
-            mkNode('t2', '모바일 UI 개선', 'Topic', { summary: 'Material 3 다크 테마 적용' }),
-            mkNode('t3', 'RAG 파이프라인 최적화', 'Topic', { summary: 'Hybrid RAG 정확도 개선' }),
-            mkNode('t4', '그래프 스키마 확장', 'Topic', { summary: '감정 분석 노드 추가 논의' }),
+    allNodeData = []; allEdgeData = [];
+    let idMap = {};  // for dedup
 
-            mkNode('tk1', 'Ktor 클라이언트 업데이트', 'Task', { deadline: '2025-02-20', status: 'in_progress' }),
-            mkNode('tk2', '벡터 인덱스 벤치마크', 'Task', { deadline: '2025-02-18', status: 'pending' }),
-            mkNode('tk3', 'UI 프로토타입 제작', 'Task', { deadline: '2025-02-15', status: 'done' }),
-            mkNode('tk4', 'Cypher 쿼리 최적화', 'Task', { deadline: '2025-02-22', status: 'pending' }),
+    // Meetings
+    (n.meetings||[]).forEach(m => { if(!idMap[m.id]){idMap[m.id]=1; allNodeData.push(mkNode(m.id, m.title, 'Meeting', {date:m.date,source:m.source_file}));} });
+    // People
+    (n.people||[]).forEach(p => { const id='p_'+p.name; if(!idMap[id]){idMap[id]=1; allNodeData.push(mkNode(id, p.name, 'Person', {role:p.role}));} });
+    // Topics
+    (n.topics||[]).forEach(t => { const id='t_'+t.title; if(!idMap[id]){idMap[id]=1; allNodeData.push(mkNode(id, dv(t.title), 'Topic', {summary:t.summary}));} });
+    // Tasks
+    (n.tasks||[]).forEach(t => { const id='tk_'+t.description; if(!idMap[id]){idMap[id]=1; allNodeData.push(mkNode(id, dv(t.description), 'Task', {deadline:t.deadline,status:t.status}));} });
+    // Decisions
+    (n.decisions||[]).forEach(d => { const id='d_'+d.description; if(!idMap[id]){idMap[id]=1; allNodeData.push(mkNode(id, dv(d.description), 'Decision', {}));} });
+    // Utterances
+    (n.utterances||[]).forEach(u => { if(!idMap[u.id]){idMap[u.id]=1; allNodeData.push(mkNode(u.id, u.text.slice(0,25)+(u.text.length>25?'…':''), 'Utterance', {text:u.text,start:u.start,end:u.end}));} });
+    // Entities
+    (n.entities||[]).forEach(en => { const id='e_'+en.name; if(!idMap[id]){idMap[id]=1; allNodeData.push(mkNode(id, dv(en.name), 'Entity', {entity_type:en.entity_type,description:en.description}));} });
 
-            mkNode('d1', 'API v5.2.0 즉시 마이그레이션', 'Decision', {}),
-            mkNode('d2', 'Material 3 다크 테마 채택', 'Decision', {}),
+    // Edges
+    (e.discussed||[]).forEach(r => allEdgeData.push(mkEdge(r.meeting_id, 't_'+r.topic, 'DISCUSSED')));
+    (e.proposed||[]).forEach(r => allEdgeData.push(mkEdge('p_'+r.person, 't_'+r.topic, 'PROPOSED')));
+    (e.assigned_to||[]).forEach(r => allEdgeData.push(mkEdge('p_'+r.person, 'tk_'+r.task, 'ASSIGNED_TO')));
+    (e.resulted_in||[]).forEach(r => allEdgeData.push(mkEdge('t_'+r.topic, 'd_'+r.decision, 'RESULTED_IN')));
+    (e.spoke||[]).forEach(r => allEdgeData.push(mkEdge('p_'+r.person, r.utterance_id, 'SPOKE')));
+    (e.next||[]).forEach(r => allEdgeData.push(mkEdge(r.from_utterance_id, r.to_utterance_id, 'NEXT')));
+    (e.contains||[]).forEach(r => allEdgeData.push(mkEdge(r.meeting_id, r.utterance_id, 'CONTAINS')));
+    (e.has_task||[]).forEach(r => allEdgeData.push(mkEdge(r.meeting_id, 'tk_'+r.task, 'HAS_TASK')));
+    (e.has_decision||[]).forEach(r => allEdgeData.push(mkEdge(r.meeting_id, 'd_'+r.decision, 'HAS_DECISION')));
+    (e.related_to||[]).forEach(r => allEdgeData.push(mkEdge('e_'+r.source, 'e_'+r.target, 'RELATED_TO')));
+    (e.mentions||[]).forEach(r => allEdgeData.push(mkEdge('t_'+r.topic, 'e_'+r.entity, 'MENTIONS')));
+    (e.has_entity||[]).forEach(r => allEdgeData.push(mkEdge(r.meeting_id, 'e_'+r.entity, 'HAS_ENTITY')));
 
-            mkNode('u1', '서버 마이그레이션은 이번 주에 시작합시다', 'Utterance', { start: 12.5, end: 16.2 }),
-            mkNode('u2', '벡터 검색 성능이 30% 향상되었습니다', 'Utterance', { start: 45.1, end: 50.3 }),
-            mkNode('u3', 'UI는 Material 3으로 통일하죠', 'Utterance', { start: 68.0, end: 72.5 }),
-            mkNode('u4', 'RAG에 Cypher 쿼리를 추가했습니다', 'Utterance', { start: 91.2, end: 97.8 }),
-            mkNode('u5', '감정 분석 노드 추가하는 건 어떤가요', 'Utterance', { start: 120.0, end: 125.5 }),
-            mkNode('u6', '디자인 프로토타입 완료 보고합니다', 'Utterance', { start: 150.3, end: 155.0 }),
+    applyGraph();
+    renderSummary(ar);
+    document.getElementById('graphPlaceholder').style.display = 'none';
+    document.getElementById('uttToggleWrap').style.display = 'flex';
+}
 
-            // Entity nodes (technology / concept / organization / event)
-            mkNode('e1', 'FastAPI', 'Entity', { entity_type: 'technology', description: 'Python 비동기 웹 프레임워크' }),
-            mkNode('e2', 'KuzuDB', 'Entity', { entity_type: 'technology', description: '임베디드 그래프 데이터베이스' }),
-            mkNode('e3', 'LangChain', 'Entity', { entity_type: 'technology', description: 'LLM 오케스트레이션 프레임워크' }),
-            mkNode('e4', 'Hybrid RAG', 'Entity', { entity_type: 'concept', description: '벡터 + 그래프 + Cypher 결합 검색' }),
-            mkNode('e5', 'Material 3', 'Entity', { entity_type: 'technology', description: 'Google 디자인 시스템' }),
-            mkNode('e6', 'SpeakNode 팀', 'Entity', { entity_type: 'organization', description: '프로젝트 개발 조직' }),
-            mkNode('e7', 'v5.2.0 마이그레이션', 'Entity', { entity_type: 'event', description: '2025-02 API 서버 업그레이드 일정' }),
-        ]);
+function applyGraph() {
+    const filteredNodes = showUtterances ? allNodeData : allNodeData.filter(n => n && n._type !== 'Utterance');
+    const nodeIds = new Set(filteredNodes.map(n => n.id));
+    const filteredEdges = allEdgeData.filter(e => e && nodeIds.has(e.from) && nodeIds.has(e.to));
 
-        const edges = new vis.DataSet([
-            mkEdge('m1', 't1', 'DISCUSSED'), mkEdge('m1', 't3', 'DISCUSSED'),
-            mkEdge('m1', 't4', 'DISCUSSED'), mkEdge('m2', 't2', 'DISCUSSED'),
-            mkEdge('p1', 't1', 'PROPOSED'), mkEdge('p2', 't3', 'PROPOSED'),
-            mkEdge('p3', 't2', 'PROPOSED'), mkEdge('p4', 't4', 'PROPOSED'),
-            mkEdge('p2', 'tk1', 'ASSIGNED_TO'), mkEdge('p4', 'tk2', 'ASSIGNED_TO'),
-            mkEdge('p3', 'tk3', 'ASSIGNED_TO'), mkEdge('p2', 'tk4', 'ASSIGNED_TO'),
-            mkEdge('t1', 'd1', 'RESULTED_IN'), mkEdge('t2', 'd2', 'RESULTED_IN'),
-            mkEdge('p1', 'u1', 'SPOKE'), mkEdge('p4', 'u2', 'SPOKE'),
-            mkEdge('p3', 'u3', 'SPOKE'), mkEdge('p2', 'u4', 'SPOKE'),
-            mkEdge('p4', 'u5', 'SPOKE'), mkEdge('p3', 'u6', 'SPOKE'),
-            mkEdge('m1', 'u1', 'CONTAINS'), mkEdge('m1', 'u2', 'CONTAINS'),
-            mkEdge('m2', 'u3', 'CONTAINS'), mkEdge('m1', 'u4', 'CONTAINS'),
-            mkEdge('m1', 'u5', 'CONTAINS'), mkEdge('m2', 'u6', 'CONTAINS'),
-            mkEdge('m1', 'tk1', 'HAS_TASK'), mkEdge('m1', 'tk2', 'HAS_TASK'),
-            mkEdge('m2', 'tk3', 'HAS_TASK'), mkEdge('m1', 'tk4', 'HAS_TASK'),
-            mkEdge('m1', 'd1', 'HAS_DECISION'), mkEdge('m2', 'd2', 'HAS_DECISION'),
-            mkEdge('u1', 'u2', 'NEXT'), mkEdge('u2', 'u4', 'NEXT'),
-            mkEdge('u3', 'u6', 'NEXT'), mkEdge('u4', 'u5', 'NEXT'),
-            // Entity edges: HAS_ENTITY (Meeting→Entity)
-            mkEdge('m1', 'e1', 'HAS_ENTITY'), mkEdge('m1', 'e2', 'HAS_ENTITY'),
-            mkEdge('m1', 'e3', 'HAS_ENTITY'), mkEdge('m1', 'e4', 'HAS_ENTITY'),
-            mkEdge('m1', 'e7', 'HAS_ENTITY'), mkEdge('m2', 'e5', 'HAS_ENTITY'),
-            mkEdge('m1', 'e6', 'HAS_ENTITY'), mkEdge('m2', 'e6', 'HAS_ENTITY'),
-            // Entity edges: MENTIONS (Topic→Entity)
-            mkEdge('t1', 'e1', 'MENTIONS'), mkEdge('t1', 'e7', 'MENTIONS'),
-            mkEdge('t3', 'e4', 'MENTIONS'), mkEdge('t3', 'e3', 'MENTIONS'),
-            mkEdge('t2', 'e5', 'MENTIONS'), mkEdge('t4', 'e2', 'MENTIONS'),
-            // Entity edges: RELATED_TO (Entity→Entity)
-            mkEdge('e1', 'e7', 'RELATED_TO'), mkEdge('e3', 'e4', 'RELATED_TO'),
-            mkEdge('e2', 'e4', 'RELATED_TO'), mkEdge('e5', 'e6', 'RELATED_TO'),
-        ]);
+    currentNodes = new vis.DataSet(filteredNodes.filter(Boolean));
+    currentEdges = new vis.DataSet(filteredEdges.filter(Boolean));
 
-        // vis-network Init
-        const container = document.getElementById('graph-canvas');
-        const network = new vis.Network(container, { nodes, edges }, {
-            physics: {
-                solver: 'forceAtlas2Based',
-                forceAtlas2Based: { gravitationalConstant: -80, centralGravity: 0.006, springLength: 160, springConstant: 0.05, damping: 0.45 },
-                stabilization: { iterations: 180, fit: true }
-            },
-            interaction: { hover: true, tooltipDelay: 150, zoomView: true, dragView: true },
-            edges: { selectionWidth: 2 },
-            nodes: { chosen: { node: function (v) { v.shadowSize = 14; v.borderWidth = 2.5 } } }
+    const container = document.getElementById('graph-canvas');
+    if (network) { network.destroy(); network = null; }
+    network = new vis.Network(container, {nodes:currentNodes, edges:currentEdges}, {
+        physics: {
+            solver:'forceAtlas2Based',
+            forceAtlas2Based:{gravitationalConstant:-80, centralGravity:0.005, springLength:150, springConstant:0.04, damping:0.5},
+            stabilization:{iterations:200, fit:true}
+        },
+        interaction:{hover:true, tooltipDelay:150, zoomView:true, dragView:true},
+        edges:{selectionWidth:2},
+        nodes:{chosen:{node:function(v){v.shadowSize=12;v.borderWidth=2.5;}}}
+    });
+
+    // Stats
+    document.getElementById('stat-nodes').textContent = currentNodes.length;
+    document.getElementById('stat-edges').textContent = currentEdges.length;
+    document.getElementById('status-bar').textContent = 'SpeakNode | Nodes: '+currentNodes.length+' | Edges: '+currentEdges.length+' | Ready';
+
+    // Click handler
+    network.on('click', function(params) {
+        const panel = document.getElementById('node-detail');
+        if (!params.nodes.length) { panel.classList.remove('visible'); return; }
+        const nd = currentNodes.get(params.nodes[0]);
+        if (!nd) return;
+        const cfg = NODE_CFG[nd._type];
+        document.getElementById('detail-title').textContent = cfg.icon+' '+nd.label.replace(cfg.icon+' ','');
+        document.getElementById('detail-title').style.color = cfg.color;
+        let html = '<div class="field"><span class="field-label">Type</span><span style="color:'+cfg.color+'">'+nd._type+'</span></div>';
+        const sc = {pending:'#f59e0b',in_progress:'#06b6d4',done:'#22c55e',blocked:'#ef4444'};
+        for (const [k,v] of Object.entries(nd._extra||{})) {
+            if (v===undefined||v===null||v==='') continue;
+            let d = v;
+            if (k==='status') d = '<span style="color:'+(sc[v]||'#e5e7eb')+'">'+v+'</span>';
+            html += '<div class="field"><span class="field-label">'+k+'</span><span>'+d+'</span></div>';
+        }
+        html += '<div class="field"><span class="field-label">Connections</span><span>'+network.getConnectedNodes(params.nodes[0]).length+'</span></div>';
+        document.getElementById('detail-fields').innerHTML = html;
+        panel.classList.add('visible');
+    });
+    network.on('doubleClick', function(params) {
+        if (params.nodes.length) network.focus(params.nodes[0], {scale:1.5, animation:{duration:500, easingFunction:'easeInOutQuad'}});
+    });
+}
+
+// ══════════════════════════════════════════════════════════════
+// Summary rendering
+// ══════════════════════════════════════════════════════════════
+function renderSummary(ar) {
+    const c = document.getElementById('summaryContainer');
+    let h = '';
+
+    // Topics
+    if (ar.topics && ar.topics.length) {
+        h += '<div class="summary-section"><h3 style="color:#22c55e;">💡 Topics ('+ar.topics.length+')</h3>';
+        ar.topics.forEach(t => {
+            h += '<div class="summary-item topic"><b>'+t.title+'</b>';
+            if (t.summary) h += '<br><span class="si-label">'+t.summary+'</span>';
+            if (t.proposer && t.proposer!=='Unknown') h += '<br><span class="si-label">제안: '+t.proposer+'</span>';
+            h += '</div>';
         });
+        h += '</div>';
+    }
 
-        // Stats
-        document.getElementById('stat-nodes').textContent = nodes.length;
-        document.getElementById('stat-edges').textContent = edges.length;
-        document.getElementById('status-bar').textContent =
-            'SpeakNode Knowledge Graph | Nodes: ' + nodes.length + ' | Edges: ' + edges.length + ' | Status: Ready';
+    // Decisions
+    if (ar.decisions && ar.decisions.length) {
+        h += '<div class="summary-section"><h3 style="color:#f472b6;">⚖️ Decisions ('+ar.decisions.length+')</h3>';
+        ar.decisions.forEach(d => {
+            h += '<div class="summary-item decision">'+d.description+'</div>';
+        });
+        h += '</div>';
+    }
 
-        // Click → Node Detail
-        network.on('click', function (params) {
-            const panel = document.getElementById('node-detail');
-            if (!params.nodes.length) { panel.classList.remove('visible'); return; }
-            const n = nodes.get(params.nodes[0]);
-            if (!n) return;
-            const cfg = NODE_CFG[n._type];
-            document.getElementById('detail-title').textContent = cfg.icon + ' ' + n.label.replace(cfg.icon + ' ', '');
-            document.getElementById('detail-title').style.color = cfg.color;
-            let html = '<div class="field"><span class="field-label">Type</span><span style="color:' + cfg.color + '">' + n._type + '</span></div>';
-            const statusColors = { pending: '#f59e0b', in_progress: '#06b6d4', done: '#22c55e', blocked: '#ef4444' };
-            for (const [k, v] of Object.entries(n._extra || {})) {
-                if (v === undefined || v === null || v === '') continue;
-                let dv = v;
-                if (k === 'status') dv = '<span style="color:' + (statusColors[v] || '#e5e7eb') + '">' + v + '</span>';
-                html += '<div class="field"><span class="field-label">' + k + '</span><span>' + dv + '</span></div>';
+    // Tasks
+    if (ar.tasks && ar.tasks.length) {
+        h += '<div class="summary-section"><h3 style="color:#f59e0b;">✅ Tasks ('+ar.tasks.length+')</h3>';
+        ar.tasks.forEach(t => {
+            const st = t.status||'pending';
+            h += '<div class="summary-item task">'+t.description+'<br>';
+            h += '<span class="si-label">'+t.assignee+' · '+t.deadline+'</span> ';
+            h += '<span class="task-status '+st+'">'+st+'</span></div>';
+        });
+        h += '</div>';
+    }
+
+    // People
+    if (ar.people && ar.people.length) {
+        h += '<div class="summary-section"><h3 style="color:#a855f7;">👤 People ('+ar.people.length+')</h3>';
+        ar.people.forEach(p => {
+            h += '<div class="summary-item person">'+p.name+' <span class="si-label">'+p.role+'</span></div>';
+        });
+        h += '</div>';
+    }
+
+    // Entities
+    if (ar.entities && ar.entities.length) {
+        h += '<div class="summary-section"><h3 style="color:#ec4899;">🔗 Entities ('+ar.entities.length+')</h3>';
+        const groups = {};
+        ar.entities.forEach(e => { (groups[e.entity_type]||(groups[e.entity_type]=[])).push(e); });
+        for (const [type, items] of Object.entries(groups)) {
+            h += '<div style="font-size:0.72em;color:#6b7280;margin:4px 0 2px;text-transform:uppercase;">'+type+'</div>';
+            items.forEach(e => {
+                h += '<div class="summary-item entity">'+e.name;
+                if (e.description) h += ' <span class="si-label">— '+e.description+'</span>';
+                h += '</div>';
+            });
+        }
+        h += '</div>';
+    }
+
+    // Relations
+    if (ar.relations && ar.relations.length) {
+        h += '<div class="summary-section"><h3 style="color:#ec4899;">↔ Relations ('+ar.relations.length+')</h3>';
+        ar.relations.forEach(r => {
+            h += '<div class="summary-item entity" style="font-size:0.75em;">'+r.source+' <span style="color:#ec4899;">—['+r.relation_type+']→</span> '+r.target+'</div>';
+        });
+        h += '</div>';
+    }
+
+    if (!h) h = '<div class="summary-placeholder"><p>데이터 없음</p></div>';
+    c.innerHTML = h;
+}
+
+// ══════════════════════════════════════════════════════════════
+// Demo loader
+// ══════════════════════════════════════════════════════════════
+function loadDemo(idx) {
+    document.querySelectorAll('.demo-card').forEach(c => c.classList.remove('active'));
+    document.getElementById('dc'+idx).classList.add('active');
+    renderFromBundle(DEMO_BUNDLES[idx]);
+}
+
+// Utterance toggle
+document.getElementById('uttToggle').addEventListener('change', function() {
+    showUtterances = this.checked;
+    if (allNodeData.length) applyGraph();
+});
+
+// ══════════════════════════════════════════════════════════════
+// PNG Upload — parse tEXt chunk for speaknode_data_zlib_b64
+// ══════════════════════════════════════════════════════════════
+function parsePngTextChunks(buf) {
+    const view = new DataView(buf);
+    // Check PNG magic
+    if (view.getUint32(0) !== 0x89504E47) throw new Error('Not a valid PNG file');
+    let offset = 8;
+    const chunks = {};
+    while (offset < buf.byteLength) {
+        const len = view.getUint32(offset);
+        const typeBytes = new Uint8Array(buf, offset+4, 4);
+        const type = String.fromCharCode(...typeBytes);
+        if (type === 'tEXt') {
+            const data = new Uint8Array(buf, offset+8, len);
+            const nullIdx = data.indexOf(0);
+            if (nullIdx > 0) {
+                const key = new TextDecoder().decode(data.slice(0, nullIdx));
+                const val = new TextDecoder().decode(data.slice(nullIdx+1));
+                chunks[key] = val;
             }
-            html += '<div class="field"><span class="field-label">Connections</span><span>' + network.getConnectedNodes(params.nodes[0]).length + '</span></div>';
-            document.getElementById('detail-fields').innerHTML = html;
-            panel.classList.add('visible');
-        });
+        }
+        if (type === 'IEND') break;
+        offset += 12 + len; // 4 len + 4 type + len data + 4 crc
+    }
+    return chunks;
+}
 
-        network.on('doubleClick', function (params) {
-            if (params.nodes.length) network.focus(params.nodes[0], { scale: 1.5, animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
-        });
-    </script>
+function handlePngUpload(file) {
+    if (!file || !file.name.toLowerCase().endsWith('.png')) {
+        alert('PNG 파일만 업로드 가능합니다.');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = function(ev) {
+        try {
+            const chunks = parsePngTextChunks(ev.target.result);
+            const encoded = chunks['speaknode_data_zlib_b64'];
+            if (!encoded) {
+                // Try legacy key
+                const legacy = chunks['speaknode_data'];
+                if (legacy) {
+                    const data = JSON.parse(legacy);
+                    handleParsedData(data);
+                    return;
+                }
+                alert('이 PNG에 SpeakNode 데이터가 없습니다.\n\nSpeakNode 앱에서 내보낸 PNG만 사용 가능합니다.');
+                return;
+            }
+            const compressed = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+            const decompressed = pako.inflate(compressed);
+            const jsonStr = new TextDecoder().decode(decompressed);
+            const data = JSON.parse(jsonStr);
+            handleParsedData(data);
+        } catch (err) {
+            alert('PNG 파싱 오류: ' + err.message);
+            console.error(err);
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function handleParsedData(data) {
+    let bundle;
+    if (data.format === 'speaknode_graph_bundle_v1') {
+        bundle = {
+            analysis_result: data.analysis_result || {},
+            graph_dump: data.graph_dump || { schema_version:3, nodes:{}, edges:{} },
+            meta: { title:'Uploaded PNG', icon:'📁', desc:'사용자 업로드 데이터' }
+        };
+    } else {
+        // Legacy: data is analysis_result directly
+        bundle = {
+            analysis_result: data,
+            graph_dump: { schema_version:3, nodes:{}, edges:{} },
+            meta: { title:'Uploaded PNG (Legacy)', icon:'📁', desc:'레거시 포맷' }
+        };
+    }
+    document.querySelectorAll('.demo-card').forEach(c => c.classList.remove('active'));
+    renderFromBundle(bundle);
+    document.getElementById('status-bar').textContent = 'SpeakNode | PNG loaded successfully';
+}
+
+// ── Drop zone & File input ──
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', ev => { ev.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); if(ev.dataTransfer.files.length) handlePngUpload(ev.dataTransfer.files[0]); });
+fileInput.addEventListener('change', ev => { if(ev.target.files.length) handlePngUpload(ev.target.files[0]); });
+
+// ── Auto-load first demo ──
+loadDemo(0);
+</script>
 </body>
-
 </html>
