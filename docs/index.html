@@ -22,10 +22,10 @@
         }
 
         .header {
-            background: rgba(0, 0, 0, 0.8);
-            padding: 15px 20px;
+            background: rgba(0, 0, 0, 0.85);
+            padding: 12px 20px;
             text-align: center;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             flex-shrink: 0;
         }
 
@@ -128,11 +128,11 @@
         }
 
         .step {
-            margin: 12px 0;
-            padding: 12px;
-            background: rgba(96, 165, 250, 0.1);
+            margin: 10px 0;
+            padding: 10px 12px;
+            background: rgba(96, 165, 250, 0.08);
             border-radius: 6px;
-            border-left: 3px solid #60a5fa;
+            border-left: 2px solid #60a5fa;
         }
 
         .step h3 {
@@ -149,13 +149,13 @@
         }
 
         .controls-info {
-            background: rgba(168, 85, 247, 0.1);
-            border-left: 3px solid #a855f7;
+            background: rgba(168, 85, 247, 0.08);
+            border-left: 2px solid #a855f7;
         }
 
         .keyboard-shortcuts {
-            background: rgba(34, 197, 94, 0.1);
-            border-left: 3px solid #22c55e;
+            background: rgba(34, 197, 94, 0.08);
+            border-left: 2px solid #22c55e;
         }
 
         /* Info tooltip */
@@ -215,12 +215,7 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            background:
-                repeating-linear-gradient(45deg,
-                    #1a1a1a 0px,
-                    #1a1a1a 10px,
-                    #2a2a2a 10px,
-                    #2a2a2a 20px);
+            background: #111111;
             position: relative;
         }
 
@@ -239,7 +234,6 @@
         .progress-bar {
             height: 100%;
             background: linear-gradient(90deg, #60a5fa, #8b5cf6);
-            box-shadow: 0 0 10px rgba(96, 165, 250, 0.65);
             position: relative;
             transition: width .15s ease;
         }
@@ -282,32 +276,37 @@
 
         .badge.meeting .dot {
             background: #60a5fa;
-            box-shadow: 0 0 6px #60a5fa;
+            box-shadow: 0 0 3px #60a5fa;
         }
 
         .badge.person .dot {
             background: #a855f7;
-            box-shadow: 0 0 6px #a855f7;
+            box-shadow: 0 0 3px #a855f7;
         }
 
         .badge.topic .dot {
             background: #22c55e;
-            box-shadow: 0 0 6px #22c55e;
+            box-shadow: 0 0 3px #22c55e;
         }
 
         .badge.task .dot {
             background: #f59e0b;
-            box-shadow: 0 0 6px #f59e0b;
+            box-shadow: 0 0 3px #f59e0b;
         }
 
         .badge.decision .dot {
             background: #f472b6;
-            box-shadow: 0 0 6px #f472b6;
+            box-shadow: 0 0 3px #f472b6;
         }
 
         .badge.utterance .dot {
             background: #06b6d4;
-            box-shadow: 0 0 6px #06b6d4;
+            box-shadow: 0 0 3px #06b6d4;
+        }
+
+        .badge.entity .dot {
+            background: #ec4899;
+            box-shadow: 0 0 3px #ec4899;
         }
 
         .details-grid {
@@ -431,7 +430,7 @@
 
                     <div class="step">
                         <h3>3. Extract</h3>
-                        <p>Ollama + LangChain으로 토픽, 결정, 태스크, 인물 구조화 추출</p>
+                        <p>Ollama + LangChain으로 토픽, 결정, 태스크, 인물, 엔티티, 관계 구조화 추출</p>
                     </div>
 
                     <div class="step">
@@ -491,6 +490,7 @@
                             <div class="badge task"><span class="dot"></span>Task</div>
                             <div class="badge decision"><span class="dot"></span>Decision</div>
                             <div class="badge utterance"><span class="dot"></span>Utterance</div>
+                            <div class="badge entity"><span class="dot"></span>Entity</div>
                         </div>
 
                         <div style="font-size: 0.85em; font-weight: 600; margin: 16px 0 8px;">Relationships</div>
@@ -513,6 +513,12 @@
                             <div style="color:#f472b6">Meeting→Decision</div>
                             <div>NEXT</div>
                             <div style="color:#06b6d4">Utterance→Utterance</div>
+                            <div>RELATED_TO</div>
+                            <div style="color:#ec4899">Entity→Entity</div>
+                            <div>MENTIONS</div>
+                            <div style="color:#22c55e">Topic→Entity</div>
+                            <div>HAS_ENTITY</div>
+                            <div style="color:#ec4899">Meeting→Entity</div>
                         </div>
 
                         <div style="font-size: 0.85em; font-weight: 600; margin: 16px 0 8px;">Statistics</div>
@@ -522,9 +528,9 @@
                             <div>Edges</div>
                             <div id="stat-edges">—</div>
                             <div>Node Types</div>
-                            <div>6</div>
+                            <div>7</div>
                             <div>Rel Types</div>
-                            <div>9</div>
+                            <div>12</div>
                         </div>
                     </div>
                 </div>
@@ -552,7 +558,8 @@
             Topic: { color: '#22c55e', glow: 'rgba(34,197,94,0.4)', size: 20, icon: '💡' },
             Task: { color: '#f59e0b', glow: 'rgba(245,158,11,0.4)', size: 18, icon: '✅' },
             Decision: { color: '#f472b6', glow: 'rgba(244,114,182,0.4)', size: 18, icon: '⚖️' },
-            Utterance: { color: '#06b6d4', glow: 'rgba(6,182,212,0.3)', size: 12, icon: '💬' }
+            Utterance: { color: '#06b6d4', glow: 'rgba(6,182,212,0.3)', size: 12, icon: '💬' },
+            Entity: { color: '#ec4899', glow: 'rgba(236,72,153,0.35)', size: 16, icon: '🔗' }
         };
 
         const EDGE_CFG = {
@@ -564,7 +571,10 @@
             CONTAINS: { color: 'rgba(96,165,250,0.25)', w: 1, dash: [3, 3] },
             HAS_TASK: { color: 'rgba(245,158,11,0.35)', w: 1.5, dash: false },
             HAS_DECISION: { color: 'rgba(244,114,182,0.35)', w: 1.5, dash: false },
-            NEXT: { color: 'rgba(6,182,212,0.2)', w: 1, dash: [2, 4] }
+            NEXT: { color: 'rgba(6,182,212,0.2)', w: 1, dash: [2, 4] },
+            RELATED_TO: { color: 'rgba(236,72,153,0.4)', w: 1.5, dash: [4, 4] },
+            MENTIONS: { color: 'rgba(34,197,94,0.35)', w: 1, dash: [3, 3] },
+            HAS_ENTITY: { color: 'rgba(236,72,153,0.3)', w: 1, dash: false }
         };
 
         function mkNode(id, label, type, extra) {
@@ -576,9 +586,9 @@
                     highlight: { background: c.color, border: '#fff' },
                     hover: { background: c.color, border: '#fff' }
                 },
-                borderWidth: 2, borderWidthSelected: 3,
-                shadow: { enabled: true, color: c.glow, size: 25, x: 0, y: 0 },
-                font: { color: '#e5e7eb', size: 13, face: "'Segoe UI',sans-serif", strokeWidth: 0 },
+                borderWidth: 1.5, borderWidthSelected: 2.5,
+                shadow: { enabled: true, color: c.glow, size: 8, x: 0, y: 0 },
+                font: { color: '#e5e7eb', size: 12, face: "'Segoe UI',sans-serif", strokeWidth: 0 },
                 shape: 'dot', size: c.size,
                 _type: type, _extra: extra || {}
             };
@@ -590,10 +600,10 @@
                 from, to, label: rel,
                 color: { color: c.color, highlight: '#fff', hover: '#fff' },
                 width: c.w, dashes: c.dash,
-                font: { color: 'rgba(255,255,255,0.3)', size: 9, strokeWidth: 0, align: 'middle' },
+                font: { color: 'rgba(255,255,255,0.25)', size: 8, strokeWidth: 0, align: 'middle' },
                 smooth: { type: 'continuous', roundness: 0.3 },
-                arrows: { to: { enabled: true, scaleFactor: 0.5 } },
-                shadow: { enabled: true, color: c.color, size: 6, x: 0, y: 0 }
+                arrows: { to: { enabled: true, scaleFactor: 0.4 } },
+                shadow: false
             };
         }
 
@@ -626,6 +636,15 @@
             mkNode('u4', 'RAG에 Cypher 쿼리를 추가했습니다', 'Utterance', { start: 91.2, end: 97.8 }),
             mkNode('u5', '감정 분석 노드 추가하는 건 어떤가요', 'Utterance', { start: 120.0, end: 125.5 }),
             mkNode('u6', '디자인 프로토타입 완료 보고합니다', 'Utterance', { start: 150.3, end: 155.0 }),
+
+            // Entity nodes (technology / concept / organization / event)
+            mkNode('e1', 'FastAPI', 'Entity', { entity_type: 'technology', description: 'Python 비동기 웹 프레임워크' }),
+            mkNode('e2', 'KuzuDB', 'Entity', { entity_type: 'technology', description: '임베디드 그래프 데이터베이스' }),
+            mkNode('e3', 'LangChain', 'Entity', { entity_type: 'technology', description: 'LLM 오케스트레이션 프레임워크' }),
+            mkNode('e4', 'Hybrid RAG', 'Entity', { entity_type: 'concept', description: '벡터 + 그래프 + Cypher 결합 검색' }),
+            mkNode('e5', 'Material 3', 'Entity', { entity_type: 'technology', description: 'Google 디자인 시스템' }),
+            mkNode('e6', 'SpeakNode 팀', 'Entity', { entity_type: 'organization', description: '프로젝트 개발 조직' }),
+            mkNode('e7', 'v5.2.0 마이그레이션', 'Entity', { entity_type: 'event', description: '2025-02 API 서버 업그레이드 일정' }),
         ]);
 
         const edges = new vis.DataSet([
@@ -647,6 +666,18 @@
             mkEdge('m1', 'd1', 'HAS_DECISION'), mkEdge('m2', 'd2', 'HAS_DECISION'),
             mkEdge('u1', 'u2', 'NEXT'), mkEdge('u2', 'u4', 'NEXT'),
             mkEdge('u3', 'u6', 'NEXT'), mkEdge('u4', 'u5', 'NEXT'),
+            // Entity edges: HAS_ENTITY (Meeting→Entity)
+            mkEdge('m1', 'e1', 'HAS_ENTITY'), mkEdge('m1', 'e2', 'HAS_ENTITY'),
+            mkEdge('m1', 'e3', 'HAS_ENTITY'), mkEdge('m1', 'e4', 'HAS_ENTITY'),
+            mkEdge('m1', 'e7', 'HAS_ENTITY'), mkEdge('m2', 'e5', 'HAS_ENTITY'),
+            mkEdge('m1', 'e6', 'HAS_ENTITY'), mkEdge('m2', 'e6', 'HAS_ENTITY'),
+            // Entity edges: MENTIONS (Topic→Entity)
+            mkEdge('t1', 'e1', 'MENTIONS'), mkEdge('t1', 'e7', 'MENTIONS'),
+            mkEdge('t3', 'e4', 'MENTIONS'), mkEdge('t3', 'e3', 'MENTIONS'),
+            mkEdge('t2', 'e5', 'MENTIONS'), mkEdge('t4', 'e2', 'MENTIONS'),
+            // Entity edges: RELATED_TO (Entity→Entity)
+            mkEdge('e1', 'e7', 'RELATED_TO'), mkEdge('e3', 'e4', 'RELATED_TO'),
+            mkEdge('e2', 'e4', 'RELATED_TO'), mkEdge('e5', 'e6', 'RELATED_TO'),
         ]);
 
         // vis-network Init
@@ -654,12 +685,12 @@
         const network = new vis.Network(container, { nodes, edges }, {
             physics: {
                 solver: 'forceAtlas2Based',
-                forceAtlas2Based: { gravitationalConstant: -60, centralGravity: 0.008, springLength: 140, springConstant: 0.06, damping: 0.4 },
-                stabilization: { iterations: 120, fit: true }
+                forceAtlas2Based: { gravitationalConstant: -80, centralGravity: 0.006, springLength: 160, springConstant: 0.05, damping: 0.45 },
+                stabilization: { iterations: 180, fit: true }
             },
             interaction: { hover: true, tooltipDelay: 150, zoomView: true, dragView: true },
             edges: { selectionWidth: 2 },
-            nodes: { chosen: { node: function (v) { v.shadowSize = 40; v.borderWidth = 3 } } }
+            nodes: { chosen: { node: function (v) { v.shadowSize = 14; v.borderWidth = 2.5 } } }
         });
 
         // Stats
