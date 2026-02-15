@@ -3,169 +3,189 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>프로젝트 결과 보고서</title>
+    <title>SpeakNode | Project Dashboard</title>
     <style>
+        /* 현대적인 다크 테마 변수 설정 */
         :root {
-            --primary-color: #2c3e50;
-            --accent-color: #3498db;
-            --bg-color: #f8f9fa;
-            --text-color: #333;
-            --card-bg: #ffffff;
+            --bg-color: #0d1117;
+            --sidebar-bg: rgba(22, 27, 34, 0.7);
+            --card-bg: rgba(255, 255, 255, 0.03);
+            --accent-color: #58a6ff;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --border-color: rgba(255, 255, 255, 0.1);
+            --glass-blur: blur(12px);
         }
 
         body {
-            font-family: 'Segoe UI', AppleSDGothicNeo, 'Malgun Gothic', sans-serif;
-            line-height: 1.6;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
             margin: 0;
             padding: 0;
             background-color: var(--bg-color);
-            color: var(--text-color);
+            color: var(--text-primary);
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
         }
 
-        header {
-            background-color: var(--primary-color);
-            color: white;
-            padding: 2rem 0;
-            text-align: center;
+        /* 왼쪽 사이드바 - 글래스모피즘 적용 */
+        .sidebar {
+            width: 350px;
+            background: var(--sidebar-bg);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border-right: 1px solid var(--border-color);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+            z-index: 10;
         }
 
-        header h1 {
+        .logo-area h1 {
             margin: 0;
-            font-size: 2.5rem;
+            font-size: 1.5rem;
+            color: var(--accent-color);
+            letter-spacing: -0.05rem;
         }
 
-        header p {
-            margin-top: 10px;
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-
-        .container {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        .section {
-            background-color: var(--card-bg);
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
-            padding: 2rem;
-        }
-
-        .section h2 {
-            border-bottom: 2px solid var(--accent-color);
-            padding-bottom: 10px;
-            color: var(--primary-color);
-            margin-top: 0;
-        }
-
-        .image-container {
-            text-align: center;
-            margin: 20px 0;
-        }
-
-        .image-container img {
-            max-width: 1000%;
-            height: auto;
-            border-radius: 4px;
-            border: 1px solid #ddd;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .caption {
+        .logo-area p {
             font-size: 0.9rem;
-            color: #666;
-            margin-top: 8px;
+            color: var(--text-secondary);
+            margin-top: 0.5rem;
         }
 
-        /* 추가적인 시각 자료를 위한 스타일 (테이블 등) */
-        .data-summary {
-            background-color: #eef2f7;
-            padding: 15px;
-            border-radius: 5px;
-            border-left: 5px solid var(--accent-color);
-        }
-
-        footer {
-            text-align: center;
+        /* 메인 콘텐츠 영역 */
+        .main-content {
+            flex: 1;
             padding: 2rem;
-            background-color: var(--primary-color);
-            color: white;
-            margin-top: 2rem;
+            overflow-y: auto;
+            position: relative;
+            background: radial-gradient(circle at 50% 50%, #161b22 0%, #0d1117 100%);
         }
 
-        @media (max-width: 768px) {
-            .container {
-                padding: 1rem;
-            }
-            header h1 {
-                font-size: 1.8rem;
-            }
+        /* 정보 카드 스타일 */
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .glass-card:hover {
+            border-color: var(--accent-color);
+        }
+
+        h2 {
+            font-size: 1.1rem;
+            margin-top: 0;
+            color: var(--accent-color);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .description {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        /* 시각화 데이터가 들어갈 공간 */
+        .viz-container {
+            width: 100%;
+            height: 500px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 20px;
+            border: 1px dashed var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 1rem;
+            position: relative;
+        }
+
+        .viz-placeholder {
+            color: var(--text-secondary);
+            text-align: center;
+        }
+
+        /* 네온 포인트 효과 */
+        .neon-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: rgba(88, 166, 255, 0.1);
+            color: var(--accent-color);
+            border-radius: 100px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            box-shadow: 0 0 15px rgba(88, 166, 255, 0.2);
+        }
+
+        /* 스크롤바 커스텀 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 10px;
         }
     </style>
 </head>
 <body>
 
-    <header>
-        <!-- 프로젝트 제목을 여기에 입력하세요 -->
-        <h1>프로젝트 분석 결과 보고서</h1>
-        <p>데이터 분석 및 시각화 결과 요약</p>
-    </header>
-
-    <div class="container">
-        
-        <!-- 1. 프로젝트 개요 -->
-        <div class="section">
-            <h2>1. 프로젝트 개요</h2>
-            <p>
-                이 페이지는 프로젝트의 주요 분석 결과를 공유하기 위해 생성되었습니다. 
-                이곳에 프로젝트의 목적, 사용된 데이터셋, 그리고 분석 방법에 대한 간략한 설명을 작성할 수 있습니다.
-                (HTML 파일을 열어 이 텍스트를 프로젝트의 실제 내용으로 수정해 주세요.)
-            </p>
+    <aside class="sidebar">
+        <div class="logo-area">
+            <h1>SpeakNode Analysis</h1>
+            <p>GraphRAG 기반 지식 분석 대시보드</p>
+            <span class="neon-badge">Live Analysis</span>
         </div>
 
-        <!-- 2. 주요 시각화 결과 -->
-        <div class="section">
-            <h2>2. 주요 시각화 결과</h2>
-            <p>아래 그래프는 분석 과정에서 도출된 핵심 시각화 자료입니다.</p>
-            
-            <div class="image-container">
-                <!-- 요청하신 이미지 파일 경로 -->
-                <!-- 주의: 이미지가 보이지 않는다면 파일 확장자가 .png 인지 .pmg 인지 확인해주세요. -->
-                <img src="./graph(2).pmg" alt="주요 분석 그래프">
-                <div class="caption">그림 1: 데이터 분석 결과 그래프 (graph(2).pmg)</div>
+        <div class="info-section">
+            <div class="glass-card">
+                <h2>1. 프로젝트 개요</h2>
+                <p class="description">
+                    이 대시보드는 AI Agent가 분석한 비정형 데이터의 핵심 관계를 그래프 형태로 시각화합니다. 
+                    복잡한 문서와 오디오 데이터 간의 연결 고리를 한눈에 파악할 수 있습니다.
+                </p>
             </div>
-            
-            <div class="data-summary">
-                <strong>분석 코멘트:</strong>
-                <p>
-                    위 그래프를 통해 데이터의 경향성을 확인할 수 있습니다. 
-                    (이곳에 그래프에 대한 해석이나 인사이트를 추가로 작성하면 좋습니다.)
+
+            <div class="glass-card">
+                <h2>3. 결론 및 향후 과제</h2>
+                <p class="description">
+                    데이터 분석 결과 도출된 핵심 인사이트를 기반으로 추후 Graph의 밀도를 높이고, 
+                    추론의 정확도를 개선하는 작업을 진행할 예정입니다.
                 </p>
             </div>
         </div>
+    </aside>
 
-        <!-- 3. 추가 분석 및 결론 -->
-        <div class="section">
-            <h2>3. 결론 및 향후 과제</h2>
-            <p>
-                본 프로젝트를 통해 도출된 결론을 이곳에 기술합니다. 
-                데이터 분석 결과가 시사하는 바와 추후 개선할 점 등을 정리할 수 있습니다.
-            </p>
-            <ul>
-                <li>주요 발견점 1</li>
-                <li>주요 발견점 2</li>
-                <li>향후 개선 사항</li>
-            </ul>
+    <main class="main-content">
+        <div class="glass-card">
+            <h2>2. 주요 분석 시각화</h2>
+            <p class="description">아래 영역은 데이터 간의 상관관계 및 엔티티 연결망을 실시간으로 렌더링합니다.</p>
+            
+            <div class="viz-container" id="visualization">
+                <div class="viz-placeholder">
+                    <p>시각화 라이브러리(vis.js 등)를 연결하여<br>여기에 그래프를 렌더링하세요.</p>
+                </div>
+            </div>
         </div>
 
-    </div>
-
-    <footer>
-        <p>&copy; 2024 Project Analysis. Hosted on GitHub Pages.</p>
-    </footer>
+        <div class="glass-card">
+            <h2>분석 코멘트</h2>
+            <p class="description">
+                현재 데이터셋에서 '회원 정보' 및 '활동 내역' 노드가 성공적으로 추출되었습니다. 
+                각 노드를 클릭하면 상세 속성 정보를 확인할 수 있습니다.
+            </p>
+        </div>
+    </main>
 
 </body>
 </html>
