@@ -125,7 +125,7 @@
 <div class="main-container">
     <!-- Header -->
     <header class="header">
-        <h1><span class="accent">SpeakNode</span> Knowledge Graph</h1>
+        <h1><span class="accent">SpeakNode</span> Knowledge Graph <span style="font-size:0.5em;color:#9ca3af;font-weight:400;margin-left:6px;">— User Demo</span></h1>
         <div class="header-links">
             <a href="https://github.com/Kinder1203/SpeakNode" target="_blank">GitHub</a>
         </div>
@@ -137,28 +137,25 @@
             <h2>Try Demo</h2>
             <p style="font-size:0.78em;color:#9ca3af;margin:0 0 10px;">데모 카드를 선택하거나 SpeakNode PNG를 업로드하세요</p>
 
-            <div class="demo-img-card" id="dc0">
-                <div class="card-loading" id="dc0-loading">생성 중…</div>
-                <img id="dc0-img" alt="주간 기획 회의">
+            <div class="demo-img-card" id="dc0" onclick="loadDemo(0)">
+                <img src="demos/demo_weekly_meeting.png" alt="주간 기획 회의">
                 <div class="card-overlay">
                     <span class="card-label">📅 주간 기획 회의</span>
-                    <button class="card-dl-btn" id="dc0-dl" title="PNG 다운로드">⬇ PNG</button>
+                    <a class="card-dl-btn" href="demos/demo_weekly_meeting.png" download="speaknode_주간기획회의.png" onclick="event.stopPropagation()" title="PNG 다운로드">⬇ PNG</a>
                 </div>
             </div>
-            <div class="demo-img-card" id="dc1">
-                <div class="card-loading" id="dc1-loading">생성 중…</div>
-                <img id="dc1-img" alt="AI 기술 세미나">
+            <div class="demo-img-card" id="dc1" onclick="loadDemo(1)">
+                <img src="demos/demo_ai_seminar.png" alt="AI 기술 세미나">
                 <div class="card-overlay">
                     <span class="card-label">🎓 AI 기술 세미나</span>
-                    <button class="card-dl-btn" id="dc1-dl" title="PNG 다운로드">⬇ PNG</button>
+                    <a class="card-dl-btn" href="demos/demo_ai_seminar.png" download="speaknode_AI기술세미나.png" onclick="event.stopPropagation()" title="PNG 다운로드">⬇ PNG</a>
                 </div>
             </div>
-            <div class="demo-img-card" id="dc2">
-                <div class="card-loading" id="dc2-loading">생성 중…</div>
-                <img id="dc2-img" alt="프로젝트 온보딩">
+            <div class="demo-img-card" id="dc2" onclick="loadDemo(2)">
+                <img src="demos/demo_project_onboarding.png" alt="프로젝트 온보딩">
                 <div class="card-overlay">
                     <span class="card-label">🚀 프로젝트 온보딩</span>
-                    <button class="card-dl-btn" id="dc2-dl" title="PNG 다운로드">⬇ PNG</button>
+                    <a class="card-dl-btn" href="demos/demo_project_onboarding.png" download="speaknode_프로젝트온보딩.png" onclick="event.stopPropagation()" title="PNG 다운로드">⬇ PNG</a>
                 </div>
             </div>
 
@@ -700,279 +697,12 @@ function renderSummary(ar) {
 }
 
 // ══════════════════════════════════════════════════════════════
-// CRC32 (for PNG chunk injection)
+// Demo loader (static PNGs from docs/demos/)
 // ══════════════════════════════════════════════════════════════
-const _crcTable = (function() {
-    const t = new Uint32Array(256);
-    for (let n = 0; n < 256; n++) {
-        let c = n;
-        for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
-        t[n] = c;
-    }
-    return t;
-})();
-function crc32(buf) {
-    let c = 0xFFFFFFFF;
-    for (let i = 0; i < buf.length; i++) c = _crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
-    return (c ^ 0xFFFFFFFF) >>> 0;
-}
-
-// ══════════════════════════════════════════════════════════════
-// Inject tEXt chunk into PNG ArrayBuffer (before IEND)
-// ══════════════════════════════════════════════════════════════
-function injectPngTextChunk(pngBuf, key, value) {
-    const src = new Uint8Array(pngBuf);
-    // Find IEND offset
-    let iendOffset = -1;
-    for (let i = src.length - 12; i >= 8; i--) {
-        if (src[i+4]===0x49 && src[i+5]===0x45 && src[i+6]===0x4E && src[i+7]===0x44) { iendOffset = i; break; }
-    }
-    if (iendOffset < 0) throw new Error('IEND not found');
-
-    const keyBytes = new TextEncoder().encode(key);
-    const valBytes = new TextEncoder().encode(value);
-    const dataLen = keyBytes.length + 1 + valBytes.length; // key + null separator + value
-
-    // Build tEXt chunk: [4 len][4 type][key][0x00][value][4 crc]
-    const chunk = new Uint8Array(12 + dataLen);
-    const dv = new DataView(chunk.buffer);
-    dv.setUint32(0, dataLen);                       // length
-    chunk[4]=0x74; chunk[5]=0x45; chunk[6]=0x78; chunk[7]=0x74; // "tEXt"
-    chunk.set(keyBytes, 8);                          // key
-    chunk[8 + keyBytes.length] = 0;                  // null separator
-    chunk.set(valBytes, 8 + keyBytes.length + 1);    // value
-    // CRC over type+data
-    const crcData = chunk.slice(4, 8 + dataLen);
-    dv.setUint32(8 + dataLen, crc32(crcData));
-
-    // Combine: before IEND + tEXt chunk + IEND chunk
-    const result = new Uint8Array(iendOffset + chunk.length + (src.length - iendOffset));
-    result.set(src.subarray(0, iendOffset));
-    result.set(chunk, iendOffset);
-    result.set(src.subarray(iendOffset), iendOffset + chunk.length);
-    return result.buffer;
-}
-
-// ══════════════════════════════════════════════════════════════
-// Canvas → Demo Card PNG
-// ══════════════════════════════════════════════════════════════
-function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
-    const words = text.split('');
-    let line = '';
-    let ly = y;
-    for (const ch of words) {
-        const test = line + ch;
-        if (ctx.measureText(test).width > maxWidth && line.length > 0) {
-            ctx.fillText(line, x, ly);
-            line = ch; ly += lineHeight;
-            if (ly > y + lineHeight * 3) { ctx.fillText(line + '…', x, ly); return ly + lineHeight; }
-        } else { line = test; }
-    }
-    if (line) ctx.fillText(line, x, ly);
-    return ly + lineHeight;
-}
-
-function drawDemoCard(bundle) {
-    const W = 640, H = 360;
-    const canvas = document.createElement('canvas');
-    canvas.width = W; canvas.height = H;
-    const ctx = canvas.getContext('2d');
-
-    // Background gradient
-    const grad = ctx.createLinearGradient(0, 0, W, H);
-    grad.addColorStop(0, '#0f0f23');
-    grad.addColorStop(1, '#1a1a2e');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, W, H);
-
-    // Subtle grid pattern
-    ctx.strokeStyle = 'rgba(96,165,250,0.04)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < W; x += 30) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += 30) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-    // Top accent line
-    const accentGrad = ctx.createLinearGradient(0, 0, W, 0);
-    accentGrad.addColorStop(0, '#60a5fa');
-    accentGrad.addColorStop(1, '#a855f7');
-    ctx.fillStyle = accentGrad;
-    ctx.fillRect(0, 0, W, 3);
-
-    const ar = bundle.analysis_result;
-    const meta = bundle.meta;
-
-    // Icon + Title
-    ctx.font = '28px "Segoe UI Emoji","Apple Color Emoji",sans-serif';
-    ctx.fillText(meta.icon, 28, 50);
-    ctx.font = 'bold 22px "Segoe UI",sans-serif';
-    ctx.fillStyle = '#e5e7eb';
-    ctx.fillText(meta.title, 66, 50);
-
-    // "SpeakNode" branding
-    ctx.font = '600 11px "Segoe UI",sans-serif';
-    ctx.fillStyle = '#60a5fa';
-    ctx.fillText('SpeakNode', W - 90, 28);
-    ctx.fillStyle = 'rgba(96,165,250,0.3)';
-    ctx.font = '10px "Segoe UI",sans-serif';
-    ctx.fillText('Knowledge Graph', W - 108, 42);
-
-    // Stats badges
-    const stats = [
-        { label: 'Topics', count: (ar.topics||[]).length, color: '#22c55e' },
-        { label: 'People', count: (ar.people||[]).length, color: '#a855f7' },
-        { label: 'Tasks', count: (ar.tasks||[]).length, color: '#f59e0b' },
-        { label: 'Decisions', count: (ar.decisions||[]).length, color: '#f472b6' },
-        { label: 'Entities', count: (ar.entities||[]).length, color: '#ec4899' },
-    ].filter(s => s.count > 0);
-
-    let bx = 30;
-    const by = 78;
-    stats.forEach(s => {
-        const text = s.label + ' ' + s.count;
-        const tw = ctx.measureText(text).width + 24;
-        // Badge background
-        ctx.fillStyle = s.color + '18';
-        ctx.strokeStyle = s.color + '40';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.roundRect(bx, by - 12, tw, 20, 4);
-        ctx.fill(); ctx.stroke();
-        // Dot
-        ctx.fillStyle = s.color;
-        ctx.beginPath(); ctx.arc(bx + 9, by - 2, 3.5, 0, Math.PI * 2); ctx.fill();
-        // Text
-        ctx.font = '11px "Segoe UI",sans-serif';
-        ctx.fillStyle = '#d1d5db';
-        ctx.fillText(text, bx + 17, by + 2);
-        bx += tw + 8;
-    });
-
-    // Divider
-    ctx.fillStyle = 'rgba(255,255,255,0.06)';
-    ctx.fillRect(30, 105, W - 60, 1);
-
-    // Topics list
-    let ty = 128;
-    ctx.font = '600 12px "Segoe UI",sans-serif';
-    ctx.fillStyle = '#22c55e';
-    ctx.fillText('💡 Topics', 30, ty);
-    ty += 18;
-    (ar.topics || []).slice(0, 3).forEach(t => {
-        // Topic bullet
-        ctx.fillStyle = '#22c55e';
-        ctx.beginPath(); ctx.arc(38, ty - 3, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.font = '600 11px "Segoe UI",sans-serif';
-        ctx.fillStyle = '#e5e7eb';
-        ctx.fillText(t.title, 48, ty);
-        ty += 14;
-        if (t.summary) {
-            ctx.font = '10px "Segoe UI",sans-serif';
-            ctx.fillStyle = '#6b7280';
-            ty = wrapText(ctx, t.summary, 48, ty, W - 90, 13);
-        }
-        ty += 4;
-    });
-
-    // Tasks (if space)
-    if (ty < H - 80 && ar.tasks && ar.tasks.length) {
-        ty += 6;
-        ctx.font = '600 12px "Segoe UI",sans-serif';
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillText('✅ Tasks', 30, ty);
-        ty += 16;
-        const statusColors = {pending:'#f59e0b', in_progress:'#06b6d4', done:'#22c55e', blocked:'#ef4444'};
-        (ar.tasks||[]).slice(0, 3).forEach(t => {
-            if (ty > H - 30) return;
-            ctx.fillStyle = statusColors[t.status] || '#f59e0b';
-            ctx.beginPath(); ctx.arc(38, ty - 3, 2.5, 0, Math.PI * 2); ctx.fill();
-            ctx.font = '11px "Segoe UI",sans-serif';
-            ctx.fillStyle = '#d1d5db';
-            ctx.fillText(t.description + '  →  ' + t.assignee, 48, ty);
-            ty += 16;
-        });
-    }
-
-    // Bottom bar
-    ctx.fillStyle = 'rgba(0,0,0,0.4)';
-    ctx.fillRect(0, H - 28, W, 28);
-    ctx.font = '10px "Courier New",monospace';
-    ctx.fillStyle = '#4b5563';
-    ctx.fillText('speaknode_graph_bundle_v1  |  schema_version: 3  |  embedded JSON data', 12, H - 10);
-
-    return canvas;
-}
-
-async function canvasToBlob(canvas) {
-    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-}
-
-// ══════════════════════════════════════════════════════════════
-// Generate demo PNG with embedded data
-// ══════════════════════════════════════════════════════════════
-async function generateDemoPng(bundle) {
-    const canvas = drawDemoCard(bundle);
-    const blob = await canvasToBlob(canvas);
-    const rawBuf = await blob.arrayBuffer();
-
-    // Prepare the bundle payload
-    const payload = {
-        format: 'speaknode_graph_bundle_v1',
-        analysis_result: bundle.analysis_result,
-        graph_dump: bundle.graph_dump
-    };
-    const jsonStr = JSON.stringify(payload);
-    const compressed = pako.deflate(new TextEncoder().encode(jsonStr));
-    const b64 = btoa(String.fromCharCode(...compressed));
-
-    // Inject tEXt chunk
-    const finalBuf = injectPngTextChunk(rawBuf, 'speaknode_data_zlib_b64', b64);
-    return new Blob([finalBuf], { type: 'image/png' });
-}
-
-// ══════════════════════════════════════════════════════════════
-// Demo loader
-// ══════════════════════════════════════════════════════════════
-const demoBlobs = [null, null, null];
-
 function loadDemo(idx) {
     document.querySelectorAll('.demo-img-card').forEach(c => c.classList.remove('active'));
     document.getElementById('dc'+idx).classList.add('active');
     renderFromBundle(DEMO_BUNDLES[idx]);
-}
-
-function downloadDemo(idx, evt) {
-    evt.stopPropagation();
-    if (!demoBlobs[idx]) return;
-    const names = ['주간기획회의', 'AI기술세미나', '프로젝트온보딩'];
-    const url = URL.createObjectURL(demoBlobs[idx]);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'speaknode_' + names[idx] + '.png';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-async function initDemoCards() {
-    for (let i = 0; i < DEMO_BUNDLES.length; i++) {
-        try {
-            const blob = await generateDemoPng(DEMO_BUNDLES[i]);
-            demoBlobs[i] = blob;
-            const url = URL.createObjectURL(blob);
-            document.getElementById('dc'+i+'-img').src = url;
-            document.getElementById('dc'+i+'-loading').style.display = 'none';
-            // Click → load graph
-            document.getElementById('dc'+i).addEventListener('click', ((idx) => () => loadDemo(idx))(i));
-            // Download button
-            document.getElementById('dc'+i+'-dl').addEventListener('click', ((idx) => (e) => downloadDemo(idx, e))(i));
-        } catch(e) {
-            console.error('Failed to generate demo card '+i, e);
-            document.getElementById('dc'+i+'-loading').textContent = '생성 실패';
-        }
-    }
-    // Auto-load first demo
-    loadDemo(0);
 }
 
 // Utterance toggle
@@ -1073,8 +803,8 @@ dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover
 dropZone.addEventListener('drop', ev => { ev.preventDefault(); dropZone.classList.remove('dragover'); if(ev.dataTransfer.files.length) handlePngUpload(ev.dataTransfer.files[0]); });
 fileInput.addEventListener('change', ev => { if(ev.target.files.length) handlePngUpload(ev.target.files[0]); });
 
-// ── Initialize demo cards ──
-initDemoCards();
+// ── Load first demo ──
+loadDemo(0);
 </script>
 </body>
 </html>

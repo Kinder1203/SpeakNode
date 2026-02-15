@@ -52,7 +52,7 @@ def set_korean_font():
 
 def render_header():
     st.title("SpeakNode: Intelligent Meeting Analyst")
-    st.markdown("**Local AI-powered meeting knowledge system**")
+    st.markdown("**Local AI-powered meeting knowledge system** &nbsp; · &nbsp; 🛠️ *Developer Debug Dashboard*")
     st.divider()
 
 def render_sidebar():
