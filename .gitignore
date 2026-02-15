@@ -61,7 +61,3 @@ Thumbs.db
 
 # AI agent artifacts 
 .gemini/
-
-
-# demo png generate
-scripts/generate_demo_pngs.py
