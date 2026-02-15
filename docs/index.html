@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>프로젝트 결과 보고서</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #3498db;
+            --bg-color: #f8f9fa;
+            --text-color: #333;
+            --card-bg: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', AppleSDGothicNeo, 'Malgun Gothic', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 2rem 0;
+            text-align: center;
+        }
+
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+        }
+
+        header p {
+            margin-top: 10px;
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .section {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 2rem;
+            padding: 2rem;
+        }
+
+        .section h2 {
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 10px;
+            color: var(--primary-color);
+            margin-top: 0;
+        }
+
+        .image-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .image-container img {
+            max-width: 1000%;
+            height: auto;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .caption {
+            font-size: 0.9rem;
+            color: #666;
+            margin-top: 8px;
+        }
+
+        /* 추가적인 시각 자료를 위한 스타일 (테이블 등) */
+        .data-summary {
+            background-color: #eef2f7;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 5px solid var(--accent-color);
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem;
+            background-color: var(--primary-color);
+            color: white;
+            margin-top: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            header h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <!-- 프로젝트 제목을 여기에 입력하세요 -->
+        <h1>프로젝트 분석 결과 보고서</h1>
+        <p>데이터 분석 및 시각화 결과 요약</p>
+    </header>
+
+    <div class="container">
+        
+        <!-- 1. 프로젝트 개요 -->
+        <div class="section">
+            <h2>1. 프로젝트 개요</h2>
+            <p>
+                이 페이지는 프로젝트의 주요 분석 결과를 공유하기 위해 생성되었습니다. 
+                이곳에 프로젝트의 목적, 사용된 데이터셋, 그리고 분석 방법에 대한 간략한 설명을 작성할 수 있습니다.
+                (HTML 파일을 열어 이 텍스트를 프로젝트의 실제 내용으로 수정해 주세요.)
+            </p>
+        </div>
+
+        <!-- 2. 주요 시각화 결과 -->
+        <div class="section">
+            <h2>2. 주요 시각화 결과</h2>
+            <p>아래 그래프는 분석 과정에서 도출된 핵심 시각화 자료입니다.</p>
+            
+            <div class="image-container">
+                <!-- 요청하신 이미지 파일 경로 -->
+                <!-- 주의: 이미지가 보이지 않는다면 파일 확장자가 .png 인지 .pmg 인지 확인해주세요. -->
+                <img src="./graph(2).pmg" alt="주요 분석 그래프">
+                <div class="caption">그림 1: 데이터 분석 결과 그래프 (graph(2).pmg)</div>
+            </div>
+            
+            <div class="data-summary">
+                <strong>분석 코멘트:</strong>
+                <p>
+                    위 그래프를 통해 데이터의 경향성을 확인할 수 있습니다. 
+                    (이곳에 그래프에 대한 해석이나 인사이트를 추가로 작성하면 좋습니다.)
+                </p>
+            </div>
+        </div>
+
+        <!-- 3. 추가 분석 및 결론 -->
+        <div class="section">
+            <h2>3. 결론 및 향후 과제</h2>
+            <p>
+                본 프로젝트를 통해 도출된 결론을 이곳에 기술합니다. 
+                데이터 분석 결과가 시사하는 바와 추후 개선할 점 등을 정리할 수 있습니다.
+            </p>
+            <ul>
+                <li>주요 발견점 1</li>
+                <li>주요 발견점 2</li>
+                <li>향후 개선 사항</li>
+            </ul>
+        </div>
+
+    </div>
+
+    <footer>
+        <p>&copy; 2024 Project Analysis. Hosted on GitHub Pages.</p>
+    </footer>
+
+</body>
+</html>
