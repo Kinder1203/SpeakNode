@@ -10,16 +10,57 @@ Usage:
     python scripts/generate_demo_pngs.py
 """
 
+import base64
+import io
+import json
 import os
 import sys
+import zlib
+
+import matplotlib.pyplot as plt
+import networkx as nx
+from PIL import Image
+from PIL.PngImagePlugin import PngInfo
 
 # ── project root를 sys.path에 추가 ──
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, PROJECT_ROOT)
 
-from core.shared.share_manager import ShareManager  # noqa: E402
-
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "docs", "demos")
+
+
+# ══════════════════════════════════════════════════════════════
+# 유틸리티 함수
+# ══════════════════════════════════════════════════════════════
+
+def _decode_scoped(value: str) -> str:
+    """'m_xxx::plain text' → 'plain text'. kuzu_manager 없이 인라인 구현."""
+    raw = str(value or "")
+    sep = "::"
+    if sep not in raw:
+        return raw
+    _, plain = raw.split(sep, 1)
+    return plain
+
+
+def _set_korean_font():
+    """OS별 CJK 폰트 설정 (view_components.set_korean_font 동일 로직)."""
+    try:
+        if os.name == "posix":
+            plt.rcParams["font.family"] = "NanumGothic"
+        else:
+            plt.rcParams["font.family"] = "Malgun Gothic"
+        plt.rcParams["axes.unicode_minus"] = False
+    except Exception:
+        pass
+
+
+def _encode_payload(data: dict) -> str:
+    """dict → zlib 압축 + base64 인코딩. share_manager._encode_payload 동일 로직."""
+    raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    compressed = zlib.compress(raw, level=9)
+    return base64.b64encode(compressed).decode("ascii")
+
 
 # ══════════════════════════════════════════════════════════════
 # Demo Bundles (index.html DEMO_BUNDLES 와 동일)
@@ -469,27 +510,304 @@ DEMO_BUNDLES = [
 
 
 # ══════════════════════════════════════════════════════════════
-# PNG 생성 — ShareManager.create_card() 활용
+# 그래프 빌드 — graph_dump dict → NetworkX DiGraph
+# ══════════════════════════════════════════════════════════════
+
+# index.html 과 동일한 노드 타입별 스타일 정의
+NODE_STYLE = {
+    "Meeting":  {"color": "#60a5fa", "size": 700,  "icon": "\U0001f4c5"},  # 📅
+    "Person":   {"color": "#a855f7", "size": 500,  "icon": "\U0001f464"},  # 👤
+    "Topic":    {"color": "#22c55e", "size": 450,  "icon": "\U0001f4a1"},  # 💡
+    "Task":     {"color": "#f59e0b", "size": 400,  "icon": "\u2705"},      # ✅
+    "Decision": {"color": "#f472b6", "size": 400,  "icon": "\u2696\ufe0f"},# ⚖️
+    "Entity":   {"color": "#ec4899", "size": 350,  "icon": "\U0001f517"},  # 🔗
+}
+
+# index.html 과 동일한 엣지 타입별 색상
+EDGE_STYLE = {
+    "DISCUSSED":    {"color": "#60a5fa", "alpha": 0.5},
+    "PROPOSED":     {"color": "#a855f7", "alpha": 0.5},
+    "ASSIGNED_TO":  {"color": "#f59e0b", "alpha": 0.5},
+    "RESULTED_IN":  {"color": "#f472b6", "alpha": 0.5},
+    "HAS_TASK":     {"color": "#f59e0b", "alpha": 0.3},
+    "HAS_DECISION": {"color": "#f472b6", "alpha": 0.3},
+    "RELATED_TO":   {"color": "#ec4899", "alpha": 0.35},
+    "MENTIONS":     {"color": "#22c55e", "alpha": 0.3},
+    "HAS_ENTITY":   {"color": "#ec4899", "alpha": 0.25},
+}
+
+
+def _build_graph_from_dump(graph_dump: dict):
+    """graph_dump dict에서 NetworkX DiGraph를 빌드한다.
+
+    Utterance 노드는 제외 (index.html에서도 기본 숨김).
+
+    Returns:
+        (G, labels, node_types_map)
+        - G: nx.DiGraph
+        - labels: {node_id: display_label}
+        - node_types_map: {node_id: node_type_str}
+    """
+    G = nx.DiGraph()
+    labels = {}
+    node_types_map = {}  # node_id → "Meeting" | "Person" | ...
+
+    nodes = graph_dump.get("nodes", {})
+    edges = graph_dump.get("edges", {})
+
+    # ── 노드 생성 ──
+    for m in nodes.get("meetings", []):
+        nid = m["id"]
+        G.add_node(nid)
+        labels[nid] = m.get("title", nid)
+        node_types_map[nid] = "Meeting"
+
+    for p in nodes.get("people", []):
+        nid = f"p_{p['name']}"
+        G.add_node(nid)
+        labels[nid] = p["name"]
+        node_types_map[nid] = "Person"
+
+    for t in nodes.get("topics", []):
+        nid = f"t_{t['title']}"
+        G.add_node(nid)
+        plain = _decode_scoped(t["title"])
+        labels[nid] = (plain[:14] + "..") if len(plain) > 14 else plain
+        node_types_map[nid] = "Topic"
+
+    for t in nodes.get("tasks", []):
+        nid = f"tk_{t['description']}"
+        G.add_node(nid)
+        plain = _decode_scoped(t["description"])
+        labels[nid] = (plain[:12] + "..") if len(plain) > 12 else plain
+        node_types_map[nid] = "Task"
+
+    for d in nodes.get("decisions", []):
+        nid = f"d_{d['description']}"
+        G.add_node(nid)
+        plain = _decode_scoped(d["description"])
+        labels[nid] = (plain[:12] + "..") if len(plain) > 12 else plain
+        node_types_map[nid] = "Decision"
+
+    for e in nodes.get("entities", []):
+        nid = f"e_{e['name']}"
+        G.add_node(nid)
+        plain = _decode_scoped(e["name"])
+        labels[nid] = (plain[:12] + "..") if len(plain) > 12 else plain
+        node_types_map[nid] = "Entity"
+
+    # ── 엣지 생성 (노드가 존재하는 경우에만) ──
+    edge_defs = [
+        ("discussed",    lambda r: (r["meeting_id"],           f"t_{r['topic']}"),        "DISCUSSED"),
+        ("proposed",     lambda r: (f"p_{r['person']}",        f"t_{r['topic']}"),        "PROPOSED"),
+        ("assigned_to",  lambda r: (f"p_{r['person']}",        f"tk_{r['task']}"),         "ASSIGNED_TO"),
+        ("resulted_in",  lambda r: (f"t_{r['topic']}",         f"d_{r['decision']}"),     "RESULTED_IN"),
+        ("has_task",     lambda r: (r["meeting_id"],           f"tk_{r['task']}"),         "HAS_TASK"),
+        ("has_decision", lambda r: (r["meeting_id"],           f"d_{r['decision']}"),     "HAS_DECISION"),
+        ("related_to",   lambda r: (f"e_{r['source']}",        f"e_{r['target']}"),       "RELATED_TO"),
+        ("mentions",     lambda r: (f"t_{r['topic']}",         f"e_{r['entity']}"),       "MENTIONS"),
+        ("has_entity",   lambda r: (r["meeting_id"],           f"e_{r['entity']}"),       "HAS_ENTITY"),
+    ]
+
+    for edge_key, id_fn, rel_type in edge_defs:
+        for row in edges.get(edge_key, []):
+            try:
+                src, dst = id_fn(row)
+                if G.has_node(src) and G.has_node(dst):
+                    G.add_edge(src, dst, rel=rel_type)
+            except (KeyError, TypeError):
+                continue
+
+    return G, labels, node_types_map
+
+
+# ══════════════════════════════════════════════════════════════
+# 렌더링 — NetworkX + Matplotlib (index.html 스타일 재현)
+# ══════════════════════════════════════════════════════════════
+
+def _render_graph_png(G, labels, node_types_map, title="SpeakNode"):
+    """NetworkX 그래프를 index.html vis-network 스타일에 맞춰 PNG로 렌더링.
+
+    Returns:
+        io.BytesIO — PNG 이미지 버퍼
+    """
+    _set_korean_font()
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    fig.patch.set_facecolor("#0f0f23")
+    ax.set_facecolor("#0f0f23")
+
+    if not G.nodes():
+        plt.close(fig)
+        return io.BytesIO()
+
+    pos = nx.spring_layout(G, k=1.5, iterations=80, seed=42)
+
+    # ── 타입별로 분리하여 노드 그리기 ──
+    for node_type, style in NODE_STYLE.items():
+        type_nodes = [n for n in G.nodes() if node_types_map.get(n) == node_type]
+        if not type_nodes:
+            continue
+
+        node_positions = {n: pos[n] for n in type_nodes}
+
+        # Glow 효과 (큰 반투명 원)
+        nx.draw_networkx_nodes(
+            G, node_positions,
+            nodelist=type_nodes,
+            node_color=style["color"],
+            node_size=style["size"] * 2.5,
+            alpha=0.15,
+            ax=ax,
+        )
+        # 메인 노드
+        nx.draw_networkx_nodes(
+            G, node_positions,
+            nodelist=type_nodes,
+            node_color=style["color"],
+            node_size=style["size"],
+            alpha=0.9,
+            edgecolors="white",
+            linewidths=0.5,
+            ax=ax,
+        )
+
+    # ── 엣지 타입별로 나눠 그리기 ──
+    for rel_type, style in EDGE_STYLE.items():
+        rel_edges = [(u, v) for u, v, d in G.edges(data=True) if d.get("rel") == rel_type]
+        if not rel_edges:
+            continue
+        nx.draw_networkx_edges(
+            G, pos,
+            edgelist=rel_edges,
+            edge_color=style["color"],
+            alpha=style["alpha"],
+            width=1.2,
+            arrows=True,
+            arrowsize=8,
+            arrowstyle="-|>",
+            connectionstyle="arc3,rad=0.1",
+            ax=ax,
+        )
+
+    # 분류에 해당하지 않는 엣지 (fallback)
+    known_rels = set(EDGE_STYLE.keys())
+    unknown_edges = [(u, v) for u, v, d in G.edges(data=True) if d.get("rel") not in known_rels]
+    if unknown_edges:
+        nx.draw_networkx_edges(
+            G, pos,
+            edgelist=unknown_edges,
+            edge_color="white",
+            alpha=0.1,
+            width=0.8,
+            arrows=True,
+            arrowsize=6,
+            ax=ax,
+        )
+
+    # ── 레이블 (흰색 텍스트) ──
+    try:
+        font_family = plt.rcParams["font.family"]
+        if isinstance(font_family, list):
+            font_family = font_family[0]
+    except (IndexError, KeyError):
+        font_family = "sans-serif"
+
+    nx.draw_networkx_labels(
+        G, pos,
+        labels=labels,
+        font_size=7,
+        font_color="#e5e7eb",
+        font_weight="bold",
+        font_family=font_family,
+        ax=ax,
+    )
+
+    # ── 범례 (Legend) ──
+    from matplotlib.lines import Line2D
+    legend_elements = []
+    for node_type, style in NODE_STYLE.items():
+        count = sum(1 for n in G.nodes() if node_types_map.get(n) == node_type)
+        if count > 0:
+            legend_elements.append(
+                Line2D([0], [0], marker="o", color="#0f0f23", markerfacecolor=style["color"],
+                       markersize=8, label=f'{node_type} ({count})', linewidth=0)
+            )
+    if legend_elements:
+        legend = ax.legend(
+            handles=legend_elements, loc="upper right",
+            fontsize=7, framealpha=0.3, facecolor="#1a1a2e",
+            edgecolor="#333355", labelcolor="#e5e7eb",
+            borderpad=0.8, handletextpad=0.5,
+        )
+        legend.get_frame().set_linewidth(0.5)
+
+    # ── 브랜딩 ──
+    ax.text(
+        0.01, 0.02, f"SpeakNode · {title}",
+        transform=ax.transAxes, fontsize=8,
+        color="#60a5fa", alpha=0.6, fontweight="bold",
+        verticalalignment="bottom",
+    )
+
+    # ── 상단 악센트 라인 ──
+    ax.axhline(y=ax.get_ylim()[1], color="#60a5fa", linewidth=2, alpha=0.6)
+
+    ax.set_axis_off()
+    plt.tight_layout(pad=0.5)
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", facecolor=fig.get_facecolor(),
+                dpi=150, bbox_inches="tight", pad_inches=0.3)
+    plt.close(fig)
+    buf.seek(0)
+    return buf
+
+
+# ══════════════════════════════════════════════════════════════
+# 메타데이터 임베딩 + 파일 저장
+# ══════════════════════════════════════════════════════════════
+
+def _save_with_metadata(image_buf: io.BytesIO, payload: dict, filepath: str) -> str:
+    """PNG 이미지에 speaknode_data_zlib_b64 메타데이터를 임베딩하고 파일로 저장한다."""
+    image = Image.open(image_buf)
+    metadata = PngInfo()
+    metadata.add_text("speaknode_data_zlib_b64", _encode_payload(payload))
+
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    image.save(filepath, "PNG", pnginfo=metadata)
+    return filepath
+
+
+# ══════════════════════════════════════════════════════════════
+# PNG 생성
 # ══════════════════════════════════════════════════════════════
 
 
-def generate_demo_png(bundle: dict, filename: str):
-    """ShareManager.create_card()를 사용하여 카드 이미지 + 메타데이터 임베딩 PNG를 생성."""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+def generate_demo_png(bundle: dict, filename: str) -> str:
+    """graph_dump에서 NetworkX 그래프를 빌드하고,
+    index.html 스타일의 지식그래프 PNG를 생성한다.
+    PNG 메타데이터에 analysis_result + graph_dump JSON을 임베딩한다."""
 
-    mgr = ShareManager(output_dir=OUTPUT_DIR)
-
-    # 카드 비주얼에 사용할 분석 결과
+    graph_dump = bundle["graph_dump"]
     analysis_result = bundle["analysis_result"]
+    meta = bundle.get("meta", {})
+    title = meta.get("title", "SpeakNode")
 
-    # PNG 메타데이터에 임베딩할 전체 번들 페이로드
+    # 1. 그래프 빌드
+    G, labels, node_types_map = _build_graph_from_dump(graph_dump)
+
+    # 2. 렌더링
+    image_buf = _render_graph_png(G, labels, node_types_map, title=title)
+
+    # 3. 메타데이터 임베딩 + 저장
     payload = {
         "format": "speaknode_graph_bundle_v1",
         "analysis_result": analysis_result,
-        "graph_dump": bundle["graph_dump"],
+        "graph_dump": graph_dump,
     }
-
-    return mgr.create_card(analysis_result, filename, payload=payload)
+    filepath = os.path.join(OUTPUT_DIR, os.path.basename(filename))
+    return _save_with_metadata(image_buf, payload, filepath)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -511,14 +829,22 @@ def main():
         size_kb = os.path.getsize(path) / 1024
         print(f"  ✓ {filename}  ({size_kb:.1f} KB)")
 
-        # 검증: 저장된 PNG에서 데이터 추출 가능한지 확인
-        mgr = ShareManager(output_dir=OUTPUT_DIR)
-        loaded = mgr.load_data_from_image(path)
-        if loaded and loaded.get("format") == "speaknode_graph_bundle_v1":
-            topics_count = len(loaded.get("analysis_result", {}).get("topics", []))
-            print(f"    └─ Verified: {topics_count} topics extracted from PNG metadata")
+        # 검증: 저장된 PNG에서 메타데이터 추출 가능한지 확인 (Pillow 직접 읽기)
+        img = Image.open(path)
+        compressed_b64 = img.text.get("speaknode_data_zlib_b64")
+        if compressed_b64:
+            raw = zlib.decompress(base64.b64decode(compressed_b64))
+            loaded = json.loads(raw.decode("utf-8"))
+            if loaded.get("format") == "speaknode_graph_bundle_v1":
+                topics_count = len(loaded.get("analysis_result", {}).get("topics", []))
+                nodes_count = sum(
+                    len(v) for v in loaded.get("graph_dump", {}).get("nodes", {}).values()
+                )
+                print(f"    └─ Verified: {topics_count} topics, {nodes_count} graph nodes in PNG metadata")
+            else:
+                print("    └─ ⚠ Verification failed: unexpected format")
         else:
-            print(f"    └─ ⚠ Verification failed!")
+            print("    └─ ⚠ Verification failed: no metadata found")
 
     print("=" * 50)
     print(f"Done. {len(DEMO_FILES)} demo PNGs generated in {OUTPUT_DIR}")
