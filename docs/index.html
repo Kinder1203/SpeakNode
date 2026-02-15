@@ -400,7 +400,7 @@
                 <h1 style="margin: 0; flex: 1; text-align: left;">
                     <span class="header-title-wrap">SpeakNode Knowledge Graph
                         <span class="info-tip">!
-                            <span class="tooltip" style="max-width: 320px; text-align: left;">SpeakNode는 회의 음성을 분석하여
+                            <span class="tooltip" style="max-width: 320px; text-align: left;">SpeakNode는 음성을 분석하여
                                 구조화된 지식 그래프를 생성하는 로컬 우선(Local-first) AI 시스템입니다. 아래 그래프는 실제 스키마 기반의 데모 데이터입니다.
                             </span>
                         </span>
@@ -545,9 +545,7 @@
 
     <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
     <script>
-        // =============================
         // Node & Edge Style Definitions
-        // =============================
         const NODE_CFG = {
             Meeting: { color: '#60a5fa', glow: 'rgba(96,165,250,0.4)', size: 30, icon: '📅' },
             Person: { color: '#a855f7', glow: 'rgba(168,85,247,0.4)', size: 22, icon: '👤' },
@@ -599,9 +597,7 @@
             };
         }
 
-        // =============================
         // Demo Data (based on schema)
-        // =============================
         const nodes = new vis.DataSet([
             mkNode('m1', '주간 기획 회의', 'Meeting', { date: '2025-02-10', source: 'weekly.wav' }),
             mkNode('m2', '디자인 리뷰', 'Meeting', { date: '2025-02-12', source: 'design.mp3' }),
@@ -653,9 +649,7 @@
             mkEdge('u3', 'u6', 'NEXT'), mkEdge('u4', 'u5', 'NEXT'),
         ]);
 
-        // =============================
         // vis-network Init
-        // =============================
         const container = document.getElementById('graph-canvas');
         const network = new vis.Network(container, { nodes, edges }, {
             physics: {
@@ -674,9 +668,7 @@
         document.getElementById('status-bar').textContent =
             'SpeakNode Knowledge Graph | Nodes: ' + nodes.length + ' | Edges: ' + edges.length + ' | Status: Ready';
 
-        // =============================
         // Click → Node Detail
-        // =============================
         network.on('click', function (params) {
             const panel = document.getElementById('node-detail');
             if (!params.nodes.length) { panel.classList.remove('visible'); return; }
