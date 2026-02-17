@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -12,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from core.config import SpeakNodeConfig, get_chat_db_path, list_chat_ids, sanitize_chat_id
@@ -245,7 +247,13 @@ async def analyze_audio(
             if result is None:
                 raise HTTPException(status_code=400, detail="No speech detected")
 
-            return {"status": "success", "chat_id": safe_chat_id, "data": result}
+            meeting_id = result.pop("meeting_id", "")
+            return {
+                "status": "success",
+                "chat_id": safe_chat_id,
+                "meeting_id": meeting_id,
+                "data": result,
+            }
         except HTTPException:
             raise
         except Exception as exc:
@@ -257,6 +265,102 @@ async def analyze_audio(
                     os.remove(temp_path)
                 except OSError:
                     logger.warning("Failed to remove temp file: %s", temp_path)
+
+
+@app.post("/analyze/stream")
+async def analyze_audio_stream(
+    file: UploadFile = File(...),
+    chat_id: str = Form("default"),
+    meeting_title: str = Form(""),
+):
+    """SSE streaming version of /analyze.
+
+    Sends progress events as ``data: {"step": ..., "percent": ..., "message": ...}``
+    and a final ``event: result`` with the full analysis JSON.
+    """
+    runtime = _ensure_engine()
+    safe_chat_id = _normalize_chat_id(chat_id)
+    chat_db_path = _chat_db_path(safe_chat_id)
+    file_ext = _validate_audio_upload(file)
+
+    # Save uploaded file synchronously so the generator can access it
+    temp_path = _temp_upload_path(file_ext)
+    with open(temp_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    async def _event_generator():
+        queue: asyncio.Queue = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def _on_progress(step: str, percent: int, message: str):
+            loop.call_soon_threadsafe(
+                queue.put_nowait,
+                {"step": step, "percent": percent, "message": message},
+            )
+
+        def _run_pipeline():
+            return runtime.process(
+                temp_path,
+                chat_db_path,
+                (meeting_title or "").strip(),
+                progress_callback=_on_progress,
+            )
+
+        lock = await _get_chat_lock(safe_chat_id)
+        async with lock:
+            future = loop.run_in_executor(analyze_executor, _run_pipeline)
+
+            while True:
+                # Drain all queued progress events
+                done = future.done()
+                while not queue.empty():
+                    event = queue.get_nowait()
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+                if done:
+                    break
+
+                # Wait briefly for new events
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=0.3)
+                    yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                except asyncio.TimeoutError:
+                    pass
+
+            # Drain any remaining events after pipeline finishes
+            while not queue.empty():
+                event = queue.get_nowait()
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+            # Send final result or error
+            try:
+                result = future.result()
+                if result is None:
+                    yield f"event: error\ndata: {json.dumps({'detail': 'No speech detected'}, ensure_ascii=False)}\n\n"
+                else:
+                    meeting_id = result.pop("meeting_id", "")
+                    final = {
+                        "status": "success",
+                        "chat_id": safe_chat_id,
+                        "meeting_id": meeting_id,
+                        "data": result,
+                    }
+                    yield f"event: result\ndata: {json.dumps(final, ensure_ascii=False)}\n\n"
+            except Exception as exc:
+                logger.exception("Streaming analyze failed")
+                yield f"event: error\ndata: {json.dumps({'detail': str(exc)}, ensure_ascii=False)}\n\n"
+            finally:
+                if os.path.exists(temp_path):
+                    try:
+                        os.remove(temp_path)
+                    except OSError:
+                        pass
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.get("/health")
@@ -329,7 +433,12 @@ async def agent_query(payload: AgentQueryRequest):
             loop = asyncio.get_running_loop()
             agent = runtime.create_agent(db_path=chat_db_path)
             response = await loop.run_in_executor(agent_executor, agent.query, payload.question)
-            return {"status": "success", "chat_id": safe_chat_id, "answer": response}
+            return {
+                "status": "success",
+                "chat_id": safe_chat_id,
+                "question": payload.question,
+                "answer": response,
+            }
         except Exception as exc:
             logger.exception("Agent query failed")
             raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -488,4 +597,4 @@ async def update_node(payload: NodeUpdateRequest):
     if updated == 0:
         raise HTTPException(status_code=404, detail="Target node not found")
 
-    return {"status": "success", "chat_id": safe_chat_id, "updated": int(updated)}
+    return {"status": "success", "chat_id": safe_chat_id, "matched_count": int(updated)}

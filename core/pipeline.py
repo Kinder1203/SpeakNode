@@ -88,14 +88,32 @@ class SpeakNodeEngine:
         with self._extractor_run_lock:
             return self.extractor.extract(transcript_text)
 
-    def process(self, audio_path: str, db_path: str | None = None, meeting_title: str | None = None):
-        """Full pipeline: STT -> Embedding -> LLM extraction -> DB ingest."""
+    def process(self, audio_path: str, db_path: str | None = None, meeting_title: str | None = None,
+                progress_callback=None):
+        """Full pipeline: STT -> Embedding -> LLM extraction -> DB ingest.
+        
+        Args:
+            progress_callback: Optional callable(step: str, percent: int, message: str)
+                               for reporting real-time progress.
+        """
+        def _progress(step: str, percent: int, message: str):
+            if progress_callback:
+                try:
+                    progress_callback(step, percent, message)
+                except Exception:
+                    pass  # never let callback errors kill the pipeline
+
+        _progress("start", 0, f"파이프라인 시작: {os.path.basename(audio_path)}")
         logger.info("Pipeline started: %s", os.path.basename(audio_path))
 
         # Step 1: STT
+        _progress("stt", 10, "음성 인식 중 (STT)...")
         segments = self.transcribe(audio_path)
         if not segments:
+            _progress("stt", 15, "음성이 감지되지 않았습니다.")
             return None
+
+        _progress("stt", 25, f"음성 인식 완료 ({len(segments)}개 세그먼트)")
 
         transcript_text = " ".join([seg.get("text", "") for seg in segments]).strip()
         if not transcript_text or transcript_text.lower() in ("none", "[]"):
@@ -103,11 +121,13 @@ class SpeakNodeEngine:
             return None
 
         # Step 2: Embedding
+        _progress("embedding", 30, "임베딩 생성 중...")
         logger.info("Embedding segments...")
         target_db_path = db_path if db_path else self.config.get_chat_db_path()
 
         # Run embedding before opening DB to avoid orphan Meeting nodes on failure.
         embeddings = self.embed(segments)
+        _progress("embedding", 45, "임베딩 완료")
 
         with KuzuManager(db_path=target_db_path, config=self.config) as db:
             now = datetime.datetime.now()
@@ -127,6 +147,7 @@ class SpeakNodeEngine:
             db.ingest_transcript(segments, embeddings, meeting_id=meeting_id)
 
             # Step 3: LLM extraction
+            _progress("extraction", 55, "LLM으로 주제/할일 추출 중...")
             logger.info("Extracting topics/tasks...")
             try:
                 analysis_data = self.extract(transcript_text)
@@ -136,17 +157,30 @@ class SpeakNodeEngine:
 
             if not analysis_data:
                 logger.warning("LLM extraction returned no results.")
-                return {"topics": [], "decisions": [], "tasks": [], "people": [], "entities": [], "relations": []}
+                _progress("extraction", 75, "추출 결과 없음")
+                return {
+                    "meeting_id": meeting_id,
+                    "topics": [], "decisions": [], "tasks": [],
+                    "people": [], "entities": [], "relations": [],
+                }
+
+            _progress("extraction", 70, "주제/할일 추출 완료")
 
             # Step 4: Knowledge graph ingest
+            _progress("graph", 80, "지식 그래프 구축 중...")
             logger.info("Building knowledge graph...")
             db.ingest_data(analysis_data, meeting_id=meeting_id)
+            _progress("graph", 90, "지식 그래프 구축 완료")
 
         logger.info("Pipeline complete.")
         # AnalysisResult -> dict (backward compat)
         if hasattr(analysis_data, "to_dict"):
-            return analysis_data.to_dict()
-        return analysis_data
+            result_dict = analysis_data.to_dict()
+        else:
+            result_dict = analysis_data if isinstance(analysis_data, dict) else {}
+        result_dict["meeting_id"] = meeting_id
+        _progress("complete", 100, "파이프라인 완료!")
+        return result_dict
 
     def create_agent(self, db_path: str | None = None) -> "SpeakNodeAgent":
         """Create an Agent instance bound to the given DB."""

@@ -117,7 +117,7 @@ class AppViewModel(
 
     fun analyzeAudio(filePath: String, meetingTitle: String = "") {
         scope.launch {
-            _analysisState.value = AnalysisState.Analyzing
+            _analysisState.value = AnalysisState.Analyzing(step = "start", percent = 0, message = "분석 시작...")
             try {
                 val file = java.io.File(filePath)
                 if (!file.exists()) {
@@ -125,7 +125,14 @@ class AppViewModel(
                     _analysisState.value = AnalysisState.Idle
                     return@launch
                 }
-                val resp = api.analyze(file, _activeChatId.value, meetingTitle)
+                val resp = api.analyzeWithProgress(
+                    audioFile = file,
+                    chatId = _activeChatId.value,
+                    meetingTitle = meetingTitle,
+                    onProgress = { step, percent, message ->
+                        _analysisState.value = AnalysisState.Analyzing(step, percent, message)
+                    },
+                )
                 _analysisState.value = AnalysisState.Complete(resp)
                 loadMeetings()
             } catch (e: Exception) {
@@ -155,7 +162,11 @@ sealed class ServerStatus {
 
 sealed class AnalysisState {
     data object Idle : AnalysisState()
-    data object Analyzing : AnalysisState()
+    data class Analyzing(
+        val step: String = "",
+        val percent: Int = 0,
+        val message: String = "분석 중...",
+    ) : AnalysisState()
     data class Complete(val response: AnalyzeResponse) : AnalysisState()
     data class Error(val message: String) : AnalysisState()
 }

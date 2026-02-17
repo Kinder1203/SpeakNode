@@ -48,7 +48,6 @@ shared_cards/
 kotlin-client/.gradle/
 kotlin-client/build/
 kotlin-client/out/
-kotlin-client/gradle/wrapper/gradle-wrapper.jar
 kotlin-client/local.properties
 
 # Editor / OS noise 

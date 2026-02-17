@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -185,7 +186,7 @@ private fun ChatItem(
             .clickable(onClick = onSelect)
             .padding(horizontal = 12.dp, vertical = 6.dp),
     ) {
-        Icon(Icons.Default.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
+        Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(8.dp))
         Text(
             text = chatId,

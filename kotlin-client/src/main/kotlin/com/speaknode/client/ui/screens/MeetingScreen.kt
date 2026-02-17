@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.CalendarToday
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,6 +15,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.speaknode.client.api.models.MeetingSummary
 import com.speaknode.client.viewmodel.AnalysisState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.swing.JFileChooser
+import javax.swing.filechooser.FileNameExtensionFilter
 
 /**
  * Meeting list screen.
@@ -32,6 +38,24 @@ fun MeetingScreen(
 ) {
     var filePath by remember { mutableStateOf("") }
     var meetingTitle by remember { mutableStateOf("") }
+    val coroutineScope = rememberCoroutineScope()
+
+    // File chooser helper
+    fun openFileChooser() {
+        coroutineScope.launch {
+            val selected = withContext(Dispatchers.IO) {
+                val chooser = JFileChooser().apply {
+                    dialogTitle = "오디오 파일 선택"
+                    fileFilter = FileNameExtensionFilter("Audio Files (*.mp3, *.wav, *.m4a)", "mp3", "wav", "m4a")
+                    isAcceptAllFileFilterUsed = false
+                }
+                if (chooser.showOpenDialog(null) == JFileChooser.APPROVE_OPTION) {
+                    chooser.selectedFile.absolutePath
+                } else null
+            }
+            if (selected != null) filePath = selected
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxSize().padding(24.dp),
@@ -57,14 +81,23 @@ fun MeetingScreen(
                 Text("오디오 분석", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Spacer(Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = filePath,
-                    onValueChange = { filePath = it },
-                    label = { Text("오디오 파일 경로") },
-                    placeholder = { Text("/path/to/meeting.mp3") },
-                    singleLine = true,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth(),
-                )
+                ) {
+                    OutlinedTextField(
+                        value = filePath,
+                        onValueChange = { filePath = it },
+                        label = { Text("오디오 파일 경로") },
+                        placeholder = { Text("/path/to/meeting.mp3") },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    IconButton(onClick = { openFileChooser() }) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = "파일 선택")
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -88,9 +121,28 @@ fun MeetingScreen(
 
                     when (analysisState) {
                         is AnalysisState.Analyzing -> {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            Spacer(Modifier.width(8.dp))
-                            Text("분석 중...", style = MaterialTheme.typography.bodyMedium)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        analysisState.message,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        "${analysisState.percent}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                                Spacer(Modifier.height(6.dp))
+                                LinearProgressIndicator(
+                                    progress = { analysisState.percent / 100f },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                                )
+                            }
                         }
                         is AnalysisState.Complete -> {
                             Text(

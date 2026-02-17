@@ -50,8 +50,8 @@ data class HealthResponse(
 data class AnalyzeResponse(
     val status: String,
     @SerialName("chat_id") val chatId: String,
-    @SerialName("meeting_id") val meetingId: String,
-    val analysis: AnalysisResult? = null,
+    @SerialName("meeting_id") val meetingId: String = "",
+    @SerialName("data") val data: AnalysisResult? = null,
 )
 
 @Serializable
@@ -60,6 +60,8 @@ data class AnalysisResult(
     val decisions: List<Decision> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val people: List<Person> = emptyList(),
+    val entities: List<EntityItem> = emptyList(),
+    val relations: List<RelationItem> = emptyList(),
 )
 
 @Serializable
@@ -93,7 +95,7 @@ data class Person(
 data class AgentResponse(
     val status: String,
     @SerialName("chat_id") val chatId: String,
-    val question: String,
+    val question: String = "",
     val answer: String,
 )
 
@@ -156,5 +158,20 @@ data class GraphExportResponse(
 @Serializable
 data class NodeUpdateResponse(
     val status: String,
+    @SerialName("chat_id") val chatId: String = "",
     @SerialName("matched_count") val matchedCount: Int = 0,
+)
+
+@Serializable
+data class EntityItem(
+    val name: String,
+    @SerialName("entity_type") val entityType: String = "concept",
+    val description: String = "",
+)
+
+@Serializable
+data class RelationItem(
+    val source: String,
+    val target: String,
+    @SerialName("relation_type") val relationType: String = "related_to",
 )
