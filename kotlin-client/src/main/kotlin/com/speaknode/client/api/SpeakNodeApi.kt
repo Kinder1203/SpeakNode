@@ -44,6 +44,12 @@ class SpeakNodeApi(
     }
 
     private val client = HttpClient(CIO) {
+        engine {
+            // Disable CIO engine-level timeout so long-running streaming
+            // requests (analysis) are not killed by the engine independently
+            // of the HttpTimeout plugin settings.
+            requestTimeout = 0
+        }
         install(ContentNegotiation) {
             json(this@SpeakNodeApi.json)
         }
@@ -192,6 +198,7 @@ class SpeakNodeApi(
                 )
                 timeout {
                     requestTimeoutMillis = null
+                    connectTimeoutMillis = 30_000
                     socketTimeoutMillis = null
                 }
             }

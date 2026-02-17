@@ -107,12 +107,14 @@ class SpeakNodeEngine:
         logger.info("Pipeline started: %s", os.path.basename(audio_path))
 
         # Step 1: STT
+        _progress("stt", 5, "음성 인식 모델 로딩 중...")
         _progress("stt", 10, "음성 인식 중 (STT)...")
         segments = self.transcribe(audio_path)
         if not segments:
             _progress("stt", 15, "음성이 감지되지 않았습니다.")
             return None
 
+        _progress("stt", 20, f"음성 인식 후처리 중 ({len(segments)}개 세그먼트)...")
         _progress("stt", 25, f"음성 인식 완료 ({len(segments)}개 세그먼트)")
 
         transcript_text = " ".join([seg.get("text", "") for seg in segments]).strip()
@@ -147,9 +149,11 @@ class SpeakNodeEngine:
             db.ingest_transcript(segments, embeddings, meeting_id=meeting_id)
 
             # Step 3: LLM extraction
+            _progress("extraction", 50, "LLM 추출 준비 중...")
             _progress("extraction", 55, "LLM으로 주제/할일 추출 중...")
             logger.info("Extracting topics/tasks...")
             try:
+                _progress("extraction", 60, "LLM 모델 추론 진행 중...")
                 analysis_data = self.extract(transcript_text)
             except Exception:
                 logger.exception("LLM extraction failed; utterance data preserved.")

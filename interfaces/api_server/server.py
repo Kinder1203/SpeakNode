@@ -320,12 +320,15 @@ async def analyze_audio_stream(
                 if done:
                     break
 
-                # Wait briefly for new events
+                # Wait briefly for new events; send keepalive if idle
                 try:
                     event = await asyncio.wait_for(queue.get(), timeout=0.3)
                     yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                 except asyncio.TimeoutError:
-                    pass
+                    # SSE comment keeps the TCP connection alive during long
+                    # processing steps (STT, LLM extraction) that produce no
+                    # progress events for minutes at a time.
+                    yield ": keepalive\n\n"
 
             # Drain any remaining events after pipeline finishes
             while not queue.empty():
