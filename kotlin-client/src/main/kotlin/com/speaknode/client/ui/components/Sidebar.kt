@@ -66,6 +66,9 @@ fun Sidebar(
         NavItem("Meetings", Icons.Default.Event, activeScreen == "meetings") {
             onScreenChange("meetings")
         }
+        NavItem("Knowledge Graph", Icons.Default.Hub, activeScreen == "graph") {
+            onScreenChange("graph")
+        }
         NavItem("Agent", Icons.Default.SmartToy, activeScreen == "agent") {
             onScreenChange("agent")
         }

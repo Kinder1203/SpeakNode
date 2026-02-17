@@ -190,7 +190,7 @@ class SpeakNodeApi(
                     )
                 )
                 timeout {
-                    requestTimeoutMillis = 600_000  // 10 min for streaming
+                    requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
                 }
             }
 

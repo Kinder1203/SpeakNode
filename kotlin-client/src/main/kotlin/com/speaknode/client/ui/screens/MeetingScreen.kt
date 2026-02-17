@@ -1,5 +1,6 @@
 package com.speaknode.client.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.speaknode.client.api.models.MeetingSummary
+import com.speaknode.client.api.models.AnalysisResult
+import com.speaknode.client.ui.components.AnalysisCards
 import com.speaknode.client.viewmodel.AnalysisState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -34,6 +37,7 @@ fun MeetingScreen(
     analysisState: AnalysisState,
     activeChatId: String,
     onAnalyze: (filePath: String, title: String) -> Unit,
+    onMeetingClick: (meetingId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var filePath by remember { mutableStateOf("") }
@@ -166,6 +170,24 @@ fun MeetingScreen(
         HorizontalDivider()
         Spacer(Modifier.height(16.dp))
 
+        // Analysis Result Cards (shown after analysis completes)
+        val analysisResult = (analysisState as? AnalysisState.Complete)?.response?.data
+        if (analysisResult != null) {
+            Text(
+                text = "📊 분석 결과",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(8.dp))
+            AnalysisCards(
+                result = analysisResult,
+                modifier = Modifier.fillMaxWidth().weight(0.5f),
+            )
+            Spacer(Modifier.height(16.dp))
+            HorizontalDivider()
+            Spacer(Modifier.height(16.dp))
+        }
+
         // Meeting List 
         Text(
             text = "회의 목록 (${meetings.size}건)",
@@ -181,9 +203,12 @@ fun MeetingScreen(
                 color = MaterialTheme.colorScheme.outline,
             )
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = if (analysisResult != null) Modifier.weight(0.5f) else Modifier.weight(1f),
+            ) {
                 items(meetings) { meeting ->
-                    MeetingCard(meeting)
+                    MeetingCard(meeting, onClick = { onMeetingClick(meeting.id) })
                 }
             }
         }
@@ -191,9 +216,9 @@ fun MeetingScreen(
 }
 
 @Composable
-private fun MeetingCard(meeting: MeetingSummary) {
+private fun MeetingCard(meeting: MeetingSummary, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable { onClick() },
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

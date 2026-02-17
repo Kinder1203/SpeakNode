@@ -2,10 +2,15 @@ package com.speaknode.client.viewmodel
 
 import com.speaknode.client.api.SpeakNodeApi
 import com.speaknode.client.api.models.*
+import com.speaknode.client.ui.graph.GraphDisplayData
+import com.speaknode.client.ui.graph.parseGraphDump
+import com.speaknode.client.util.PngMetadata
+import com.speaknode.client.util.ScopeUtils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.json.*
 
 /**
  * ViewModel managing global application state.
@@ -37,6 +42,23 @@ class AppViewModel(
     // Analysis state 
     private val _analysisState = MutableStateFlow<AnalysisState>(AnalysisState.Idle)
     val analysisState: StateFlow<AnalysisState> = _analysisState.asStateFlow()
+
+    // Meeting detail
+    private val _meetingDetail = MutableStateFlow<MeetingDetail?>(null)
+    val meetingDetail: StateFlow<MeetingDetail?> = _meetingDetail.asStateFlow()
+
+    private val _meetingDetailLoading = MutableStateFlow(false)
+    val meetingDetailLoading: StateFlow<Boolean> = _meetingDetailLoading.asStateFlow()
+
+    // Graph data
+    private val _graphData = MutableStateFlow<GraphDisplayData?>(null)
+    val graphData: StateFlow<GraphDisplayData?> = _graphData.asStateFlow()
+
+    private val _graphLoading = MutableStateFlow(false)
+    val graphLoading: StateFlow<Boolean> = _graphLoading.asStateFlow()
+
+    // Raw graph dump (for export)
+    private var _rawGraphDump: JsonObject? = null
 
     // Error message 
     private val _error = MutableStateFlow<String?>(null)
@@ -142,6 +164,193 @@ class AppViewModel(
         }
     }
 
+    // ── Meeting Detail ──
+
+    fun loadMeetingDetail(meetingId: String) {
+        scope.launch {
+            _meetingDetailLoading.value = true
+            try {
+                val resp = api.getMeeting(meetingId, _activeChatId.value)
+                _meetingDetail.value = resp.meeting
+            } catch (e: Exception) {
+                _error.value = "미팅 상세 로드 실패: ${e.message}"
+            } finally {
+                _meetingDetailLoading.value = false
+            }
+        }
+    }
+
+    fun clearMeetingDetail() {
+        _meetingDetail.value = null
+    }
+
+    // ── Graph Data ──
+
+    fun loadGraphData() {
+        scope.launch {
+            _graphLoading.value = true
+            try {
+                val resp = api.exportGraph(_activeChatId.value)
+                _rawGraphDump = resp.graphDump
+                _graphData.value = parseGraphDump(resp.graphDump)
+            } catch (e: Exception) {
+                _error.value = "그래프 데이터 로드 실패: ${e.message}"
+                _graphData.value = null
+            } finally {
+                _graphLoading.value = false
+            }
+        }
+    }
+
+    fun exportGraphJson(file: java.io.File) {
+        scope.launch {
+            try {
+                val dump = _rawGraphDump ?: run {
+                    val resp = api.exportGraph(_activeChatId.value)
+                    resp.graphDump
+                }
+                file.writeText(dump.toString())
+                _error.value = null
+            } catch (e: Exception) {
+                _error.value = "JSON 내보내기 실패: ${e.message}"
+            }
+        }
+    }
+
+    fun exportGraphPng(file: java.io.File) {
+        scope.launch {
+            try {
+                val dump = _rawGraphDump ?: api.exportGraph(_activeChatId.value).graphDump
+                val summary = _graphData.value?.summary
+
+                // Build analysis_result JsonObject from summary
+                val analysisJson = summary?.let {
+                    buildJsonObject {
+                        putJsonArray("topics") {
+                            it.topics.forEach { t ->
+                                addJsonObject {
+                                    put("title", t.title)
+                                    put("summary", t.summary)
+                                    put("proposer", t.proposer)
+                                }
+                            }
+                        }
+                        putJsonArray("decisions") {
+                            it.decisions.forEach { d -> addJsonObject { put("description", d.description) } }
+                        }
+                        putJsonArray("tasks") {
+                            it.tasks.forEach { t ->
+                                addJsonObject {
+                                    put("description", t.description)
+                                    put("assignee", t.assignee)
+                                    put("deadline", t.deadline)
+                                    put("status", t.status)
+                                }
+                            }
+                        }
+                        putJsonArray("people") {
+                            it.people.forEach { p -> addJsonObject { put("name", p.name); put("role", p.role) } }
+                        }
+                        putJsonArray("entities") {
+                            it.entities.forEach { e ->
+                                addJsonObject {
+                                    put("name", e.name)
+                                    put("entity_type", e.entityType)
+                                    put("description", e.description)
+                                }
+                            }
+                        }
+                        putJsonArray("relations") {
+                            it.relations.forEach { r ->
+                                addJsonObject {
+                                    put("source", r.source)
+                                    put("target", r.target)
+                                    put("relation_type", r.relationType)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val topics = summary?.topics?.map { ScopeUtils.decode(it.title) } ?: emptyList()
+                val tasks = summary?.tasks?.map { ScopeUtils.decode(it.description) } ?: emptyList()
+                val stats = mapOf(
+                    "Topics" to (summary?.topics?.size ?: 0),
+                    "Tasks" to (summary?.tasks?.size ?: 0),
+                    "Decisions" to (summary?.decisions?.size ?: 0),
+                    "People" to (summary?.people?.size ?: 0),
+                    "Entities" to (summary?.entities?.size ?: 0),
+                )
+
+                val pngBytes = PngMetadata.createSharePng(
+                    graphDump = dump,
+                    analysisResult = analysisJson,
+                    topics = topics,
+                    tasks = tasks,
+                    stats = stats,
+                )
+                file.writeBytes(pngBytes)
+            } catch (e: Exception) {
+                _error.value = "PNG 내보내기 실패: ${e.message}"
+            }
+        }
+    }
+
+    fun importGraphFile(file: java.io.File) {
+        scope.launch {
+            try {
+                val fileName = file.name.lowercase()
+                when {
+                    fileName.endsWith(".png") -> {
+                        val result = PngMetadata.importFromPng(file)
+                        if (result == null) {
+                            _error.value = "이 PNG에 SpeakNode 데이터가 없습니다."
+                            return@launch
+                        }
+                        val (graphDump, _) = result
+                        // Convert JsonObject to Map<String, JsonElement> for API
+                        val dumpMap = graphDump.toMap()
+                        api.importGraph(_activeChatId.value, dumpMap)
+                        loadMeetings()
+                        loadGraphData()
+                    }
+                    fileName.endsWith(".json") -> {
+                        val jsonStr = file.readText()
+                        val jsonObj = Json.parseToJsonElement(jsonStr).jsonObject
+                        val dumpMap = jsonObj.toMap()
+                        api.importGraph(_activeChatId.value, dumpMap)
+                        loadMeetings()
+                        loadGraphData()
+                    }
+                    else -> {
+                        _error.value = "PNG 또는 JSON 파일만 가져올 수 있습니다."
+                    }
+                }
+            } catch (e: Exception) {
+                _error.value = "가져오기 실패: ${e.message}"
+            }
+        }
+    }
+
+    // ── Node Update ──
+
+    fun updateNode(nodeType: String, nodeId: String, fields: Map<String, String>) {
+        scope.launch {
+            try {
+                api.updateNode(
+                    chatId = _activeChatId.value,
+                    nodeType = nodeType,
+                    nodeId = nodeId,
+                    fields = fields,
+                )
+                // Reload graph to reflect changes
+                loadGraphData()
+            } catch (e: Exception) {
+                _error.value = "노드 업데이트 실패: ${e.message}"
+            }
+        }
+    }
+
     fun clearError() {
         _error.value = null
     }
@@ -150,6 +359,8 @@ class AppViewModel(
         scope.cancel()
         api.close()
     }
+
+    private fun JsonObject.toMap(): Map<String, JsonElement> = this.entries.associate { it.key to it.value }
 }
 
 // State Types
