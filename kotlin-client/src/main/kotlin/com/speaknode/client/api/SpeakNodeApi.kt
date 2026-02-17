@@ -53,6 +53,7 @@ class SpeakNodeApi(
         install(HttpTimeout) {
             requestTimeoutMillis = 300_000
             connectTimeoutMillis = 10_000
+            socketTimeoutMillis = 300_000
         }
         defaultRequest {
             contentType(ContentType.Application.Json)
@@ -191,6 +192,7 @@ class SpeakNodeApi(
                 )
                 timeout {
                     requestTimeoutMillis = null
+                    socketTimeoutMillis = null
                 }
             }
 
