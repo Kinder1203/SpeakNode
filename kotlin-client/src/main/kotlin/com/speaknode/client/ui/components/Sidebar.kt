@@ -48,7 +48,7 @@ fun Sidebar(
     ) {
         // Header 
         Text(
-            text = "🧠 SpeakNode",
+            text = "SpeakNode",
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.primary,
         )
