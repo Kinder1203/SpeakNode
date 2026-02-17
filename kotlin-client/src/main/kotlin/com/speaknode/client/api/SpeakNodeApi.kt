@@ -197,9 +197,9 @@ class SpeakNodeApi(
                     )
                 )
                 timeout {
-                    requestTimeoutMillis = null
+                    requestTimeoutMillis = Long.MAX_VALUE
                     connectTimeoutMillis = 30_000
-                    socketTimeoutMillis = null
+                    socketTimeoutMillis = Long.MAX_VALUE
                 }
             }
 
