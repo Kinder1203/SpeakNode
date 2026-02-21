@@ -140,39 +140,44 @@ class KuzuManager:
                     vector = embeddings[i]
                     
                     self.conn.execute(
-                        "MERGE (u:Utterance {id: $id})",
-                        {"id": u_id}
-                    )
-                    self.conn.execute(
-                        "MATCH (u:Utterance {id: $id}) SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
+                        "MERGE (u:Utterance {id: $id}) "
+                        "SET u.text = $text, u.startTime = $stime, u.endTime = $etime, u.embedding = $vec",
                         {"id": u_id, "text": text, "stime": start, "etime": end, "vec": vector}
                     )
-                    
+
                     speaker_name = seg.get('speaker', 'Unknown')
                     self.conn.execute(
-                        "MERGE (p:Person {name: $name})",
+                        "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
                         {"name": speaker_name}
                     )
-                    self.conn.execute(
-                        "MATCH (p:Person {name: $name}) SET p.role = 'Member'",
-                        {"name": speaker_name}
-                    )
-                    self.conn.execute(
-                        "MATCH (p:Person {name: $name}), (u:Utterance {id: $id}) MERGE (p)-[:SPOKE]->(u)",
-                        {"name": speaker_name, "id": u_id}
-                    )
-                    
+                    try:
+                        self.conn.execute(
+                            "MATCH (p:Person {name: $name}), (u:Utterance {id: $uid}) "
+                            "CREATE (p)-[:SPOKE]->(u)",
+                            {"name": speaker_name, "uid": u_id}
+                        )
+                    except Exception as _e:
+                        logger.debug("SPOKE edge skipped: %s", _e)
+
                     if previous_id:
-                        self.conn.execute(
-                            "MATCH (prev:Utterance {id: $pid}), (curr:Utterance {id: $cid}) MERGE (prev)-[:NEXT]->(curr)",
-                            {"pid": previous_id, "cid": u_id}
-                        )
-                    
+                        try:
+                            self.conn.execute(
+                                "MATCH (prev:Utterance {id: $pid}), (curr:Utterance {id: $cid}) "
+                                "CREATE (prev)-[:NEXT]->(curr)",
+                                {"pid": previous_id, "cid": u_id}
+                            )
+                        except Exception as _e:
+                            logger.debug("NEXT edge skipped: %s", _e)
+
                     if meeting_id:
-                        self.conn.execute(
-                            "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) MERGE (m)-[:CONTAINS]->(u)",
-                            {"mid": meeting_id, "uid": u_id}
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (m:Meeting {id: $mid}), (u:Utterance {id: $uid}) "
+                                "CREATE (m)-[:CONTAINS]->(u)",
+                                {"mid": meeting_id, "uid": u_id}
+                            )
+                        except Exception as _e:
+                            logger.debug("CONTAINS edge skipped: %s", _e)
                     
                     previous_id = u_id
                     ingested_count += 1
@@ -541,11 +546,7 @@ class KuzuManager:
                 # Person nodes
                 for p in analysis_result.get("people", []):
                     self.conn.execute(
-                        "MERGE (p:Person {name: $name})",
-                        {"name": p['name']}
-                    )
-                    self.conn.execute(
-                        "MATCH (p:Person {name: $name}) SET p.role = $role",
+                        "MERGE (p:Person {name: $name}) SET p.role = $role",
                         {"name": p['name'], "role": p.get('role', 'Member')}
                     )
 
@@ -556,54 +557,58 @@ class KuzuManager:
                         continue
                     topic_keys_by_plain[plain_title] = plain_title
                     self.conn.execute(
-                        "MERGE (t:Topic {title: $title})",
-                        {"title": plain_title}
-                    )
-                    self.conn.execute(
-                        "MATCH (t:Topic {title: $title}) SET t.summary = $summary",
+                        "MERGE (t:Topic {title: $title}) SET t.summary = $summary",
                         {"title": plain_title, "summary": t.get('summary', '')}
                     )
                     if t.get('proposer') and t['proposer'] != 'Unknown':
-                        self.conn.execute(
-                            "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
-                            {"name": t['proposer'], "title": plain_title}
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) "
+                                "CREATE (p)-[:PROPOSED]->(t)",
+                                {"name": t['proposer'], "title": plain_title}
+                            )
+                        except Exception as _e:
+                            logger.debug("PROPOSED edge skipped: %s", _e)
                     if meeting_id:
-                        self.conn.execute(
-                            "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
-                            {"mid": meeting_id, "title": plain_title}
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) "
+                                "CREATE (m)-[:DISCUSSED]->(t)",
+                                {"mid": meeting_id, "title": plain_title}
+                            )
+                        except Exception as _e:
+                            logger.debug("DISCUSSED edge skipped: %s", _e)
 
                 # Task nodes and relationships
                 for task in analysis_result.get("tasks", []):
                     desc_text = str(task.get('description', '')).strip() or "No Description"
                     status = normalize_task_status(task.get("status", "pending"))
                     self.conn.execute(
-                        "MERGE (t:Task {description: $task_desc})",
-                        {"task_desc": desc_text}
-                    )
-                    self.conn.execute(
-                        "MATCH (t:Task {description: $task_desc}) SET t.deadline = $due, t.status = $status",
+                        "MERGE (t:Task {description: $task_desc}) SET t.deadline = $due, t.status = $status",
                         {"task_desc": desc_text, "due": task.get('deadline', 'TBD'), "status": status}
                     )
                     if task.get('assignee') and task['assignee'] != 'Unassigned':
                         self.conn.execute(
-                            "MERGE (p:Person {name: $name})",
+                            "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
                             {"name": task['assignee']},
                         )
-                        self.conn.execute(
-                            "MATCH (p:Person {name: $name}) SET p.role = 'Member'",
-                            {"name": task['assignee']},
-                        )
-                        self.conn.execute(
-                            "MATCH (p:Person {name: $name}), (t:Task {description: $task_desc}) MERGE (p)-[:ASSIGNED_TO]->(t)",
-                            {"name": task['assignee'], "task_desc": desc_text}
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (p:Person {name: $name}), (t:Task {description: $task_desc}) "
+                                "CREATE (p)-[:ASSIGNED_TO]->(t)",
+                                {"name": task['assignee'], "task_desc": desc_text}
+                            )
+                        except Exception as _e:
+                            logger.debug("ASSIGNED_TO edge skipped: %s", _e)
                     if meeting_id:
-                        self.conn.execute(
-                            "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task_desc}) MERGE (m)-[:HAS_TASK]->(t)",
-                            {"mid": meeting_id, "task_desc": desc_text},
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (m:Meeting {id: $mid}), (t:Task {description: $task_desc}) "
+                                "CREATE (m)-[:HAS_TASK]->(t)",
+                                {"mid": meeting_id, "task_desc": desc_text},
+                            )
+                        except Exception as _e:
+                            logger.debug("HAS_TASK edge skipped: %s", _e)
 
                 # Decision nodes and relationships
                 for d in analysis_result.get("decisions", []):
@@ -613,17 +618,25 @@ class KuzuManager:
                         {"decision_desc": desc_text}
                     )
                     if meeting_id:
-                        self.conn.execute(
-                            "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) MERGE (m)-[:HAS_DECISION]->(d)",
-                            {"mid": meeting_id, "decision_desc": desc_text},
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) "
+                                "CREATE (m)-[:HAS_DECISION]->(d)",
+                                {"mid": meeting_id, "decision_desc": desc_text},
+                            )
+                        except Exception as _e:
+                            logger.debug("HAS_DECISION edge skipped: %s", _e)
                     if d.get('related_topic'):
                         plain_related_topic = str(d.get("related_topic", "")).strip()
                         resolved_topic_key = topic_keys_by_plain.get(plain_related_topic, plain_related_topic)
-                        self.conn.execute(
-                            "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) MERGE (t)-[:RESULTED_IN]->(d)",
-                            {"title": resolved_topic_key, "decision_desc": desc_text}
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (t:Topic {title: $title}), (d:Decision {description: $decision_desc}) "
+                                "CREATE (t)-[:RESULTED_IN]->(d)",
+                                {"title": resolved_topic_key, "decision_desc": desc_text}
+                            )
+                        except Exception as _e:
+                            logger.debug("RESULTED_IN edge skipped: %s", _e)
 
             logger.info("Core knowledge graph ingested (people/topics/tasks/decisions).")
         except Exception:
@@ -645,26 +658,22 @@ class KuzuManager:
                     ent_type = str(ent.get("entity_type", "concept")).strip()
                     ent_desc = str(ent.get("description", "")).strip()
                     self.conn.execute(
-                        "MERGE (e:Entity {name: $name})",
-                        {"name": ent_name},
-                    )
-                    self.conn.execute(
-                        "MATCH (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $edescription",
+                        "MERGE (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $edescription",
                         {"name": ent_name, "etype": ent_type, "edescription": ent_desc},
                     )
                     if meeting_id:
-                        self.conn.execute(
-                            "MATCH (m:Meeting {id: $mid}), (e:Entity {name: $ename}) MERGE (m)-[:HAS_ENTITY]->(e)",
-                            {"mid": meeting_id, "ename": ent_name},
-                        )
+                        try:
+                            self.conn.execute(
+                                "MATCH (m:Meeting {id: $mid}), (e:Entity {name: $ename}) "
+                                "CREATE (m)-[:HAS_ENTITY]->(e)",
+                                {"mid": meeting_id, "ename": ent_name},
+                            )
+                        except Exception as _e:
+                            logger.debug("HAS_ENTITY edge skipped: %s", _e)
                     # Mirror person-type entity as a Person node
                     if ent_type == "person":
                         self.conn.execute(
-                            "MERGE (p:Person {name: $name})",
-                            {"name": ent_name},
-                        )
-                        self.conn.execute(
-                            "MATCH (p:Person {name: $name}) SET p.role = 'Member'",
+                            "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
                             {"name": ent_name},
                         )
 
@@ -675,11 +684,14 @@ class KuzuManager:
                     rel_type = str(rel.get("relation_type", "related_to")).strip()
                     if src not in entity_keys_by_plain or tgt not in entity_keys_by_plain:
                         continue
-                    self.conn.execute(
-                        "MATCH (a:Entity {name: $src}), (b:Entity {name: $tgt}) "
-                        "MERGE (a)-[:RELATED_TO {relation_type: $rtype}]->(b)",
-                        {"src": src, "tgt": tgt, "rtype": rel_type},
-                    )
+                    try:
+                        self.conn.execute(
+                            "MATCH (a:Entity {name: $src}), (b:Entity {name: $tgt}) "
+                            "CREATE (a)-[:RELATED_TO {relation_type: $rtype}]->(b)",
+                            {"src": src, "tgt": tgt, "rtype": rel_type},
+                        )
+                    except Exception as _e:
+                        logger.debug("RELATED_TO edge skipped: %s", _e)
 
                 # Topic ↔ Entity MENTIONS edges
                 for plain_title in topic_keys_by_plain:
@@ -693,11 +705,14 @@ class KuzuManager:
                     topic_text = f"{plain_title} {topic_data.get('summary', '')}"
                     for ent_name in entity_keys_by_plain:
                         if ent_name in topic_text:
-                            self.conn.execute(
-                                "MATCH (t:Topic {title: $ttitle}), (e:Entity {name: $ename}) "
-                                "MERGE (t)-[:MENTIONS]->(e)",
-                                {"ttitle": plain_title, "ename": ent_name},
-                            )
+                            try:
+                                self.conn.execute(
+                                    "MATCH (t:Topic {title: $ttitle}), (e:Entity {name: $ename}) "
+                                    "CREATE (t)-[:MENTIONS]->(e)",
+                                    {"ttitle": plain_title, "ename": ent_name},
+                                )
+                            except Exception as _e:
+                                logger.debug("MENTIONS edge skipped: %s", _e)
 
             logger.info("Entity data ingested (%d entities).", len(entity_keys_by_plain))
         except Exception:
@@ -712,11 +727,7 @@ class KuzuManager:
     def create_meeting(self, meeting_id: str, title: str, date: str = "", source_file: str = "") -> str:
         """Create a Meeting node."""
         self.conn.execute(
-            "MERGE (m:Meeting {id: $id})",
-            {"id": meeting_id}
-        )
-        self.conn.execute(
-            "MATCH (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
+            "MERGE (m:Meeting {id: $id}) SET m.title = $title, m.date = $date, m.source_file = $src",
             {"id": meeting_id, "title": title, "date": date, "src": source_file}
         )
         logger.info("Meeting created: '%s' (%s)", title, meeting_id)

@@ -45,6 +45,31 @@ _NODE_EMOJI = {
     "meeting": "📅", "person": "👤", "topic": "💡",
     "task": "✅", "decision": "⚖️", "entity": "🔗", "utterance": "💬",
 }
+# Glow (translucent background) colors matching index.html NODE_CFG
+_NODE_GLOW = {
+    "meeting":   "rgba(96,165,250,0.3)",
+    "person":    "rgba(168,85,247,0.3)",
+    "topic":     "rgba(34,197,94,0.3)",
+    "task":      "rgba(245,158,11,0.3)",
+    "decision":  "rgba(244,114,182,0.3)",
+    "entity":    "rgba(236,72,153,0.25)",
+    "utterance": "rgba(6,182,212,0.2)",
+}
+# Edge style config matching index.html EDGE_CFG
+_EDGE_CFG: dict[str, dict] = {
+    "DISCUSSED":    {"color": "rgba(96,165,250,0.5)",  "w": 2,   "dash": False},
+    "PROPOSED":     {"color": "rgba(168,85,247,0.5)",  "w": 2,   "dash": False},
+    "ASSIGNED_TO":  {"color": "rgba(245,158,11,0.5)",  "w": 2,   "dash": [5, 5]},
+    "RESULTED_IN":  {"color": "rgba(244,114,182,0.5)", "w": 2,   "dash": False},
+    "SPOKE":        {"color": "rgba(6,182,212,0.3)",   "w": 1,   "dash": False},
+    "CONTAINS":     {"color": "rgba(96,165,250,0.2)",  "w": 1,   "dash": [3, 3]},
+    "HAS_TASK":     {"color": "rgba(245,158,11,0.3)",  "w": 1.5, "dash": False},
+    "HAS_DECISION": {"color": "rgba(244,114,182,0.3)", "w": 1.5, "dash": False},
+    "NEXT":         {"color": "rgba(6,182,212,0.15)",  "w": 1,   "dash": [2, 4]},
+    "RELATED_TO":   {"color": "rgba(236,72,153,0.35)", "w": 1.5, "dash": [4, 4]},
+    "MENTIONS":     {"color": "rgba(34,197,94,0.3)",   "w": 1,   "dash": [3, 3]},
+    "HAS_ENTITY":   {"color": "rgba(236,72,153,0.25)", "w": 1,   "dash": False},
+}
 
 
 def _encode_payload_for_png(payload: dict) -> str:
@@ -189,7 +214,7 @@ def display_analysis_cards(result):
                     <div style="background:#1e293b;border-radius:8px;padding:10px 14px;
                                 margin-bottom:8px;border-left:3px solid {badge};">
                       <div style="color:#e2e8f0;font-size:0.88rem;">{task.get("description","")}</div>
-                      <div style="color:#64748b;font-size:0.77rem;margin-top:3px;">{meta}</div>
+                      <div style="color:#94a3b8;font-size:0.8rem;margin-top:4px;">{meta}</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -218,7 +243,6 @@ def display_analysis_cards(result):
 
 def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
     """Return a self-contained vis-network HTML page matching docs/index.html style."""
-    # Use plain string concatenation to avoid f-string conflicts with JS {} syntax.
     toolbar_html = (
         "<div id='toolbar'>"
         "<label><input type='checkbox' id='toggle-utt'> 💬 발언 노드 표시</label>"
@@ -231,29 +255,32 @@ def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
         "<div class='li'><div class='ld' style='background:#ec4899'></div>엔티티</div>"
         "</div></div>"
     )
+    h = str(height)
     css = (
         "<style>"
         "*{box-sizing:border-box;margin:0;padding:0;}"
-        "body{background:#0f172a;font-family:'Malgun Gothic','Apple SD Gothic Neo',sans-serif;"
-        "height:" + str(height) + "px;overflow:hidden;}"
+        "body{background:#0f172a;font-family:'Segoe UI','Malgun Gothic','Apple SD Gothic Neo',sans-serif;"
+        "height:" + h + "px;overflow:hidden;}"
         "#toolbar{display:flex;align-items:center;gap:14px;padding:7px 14px;"
-        "background:#1e293b;border-bottom:1px solid #334155;}"
-        "#toolbar label{color:#94a3b8;font-size:0.82rem;display:flex;align-items:center;"
+        "background:rgba(0,0,0,0.6);border-bottom:1px solid rgba(255,255,255,0.06);}"
+        "#toolbar label{color:#e2e8f0;font-size:0.82rem;display:flex;align-items:center;"
         "gap:6px;cursor:pointer;user-select:none;}"
         "#toolbar input[type=checkbox]{accent-color:#60a5fa;width:14px;height:14px;}"
         "#legend{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap;}"
         ".li{display:flex;align-items:center;gap:4px;font-size:0.75rem;color:#94a3b8;}"
-        ".ld{width:10px;height:10px;border-radius:50%;flex-shrink:0;}"
-        "#gwrap{display:flex;height:calc(" + str(height) + "px - 41px);}"
-        "#network{flex:1;}"
-        "#dpanel{width:260px;background:#1e293b;border-left:1px solid #334155;"
+        ".ld{width:9px;height:9px;border-radius:50%;flex-shrink:0;}"
+        "#gwrap{display:flex;height:calc(" + h + "px - 41px);}"
+        "#network{flex:1;background:#0a0a0a;}"
+        "#dpanel{width:270px;background:rgba(0,0,0,0.6);border-left:1px solid rgba(255,255,255,0.06);"
         "padding:16px;overflow-y:auto;flex-shrink:0;}"
-        "#dtitle{font-size:0.95rem;font-weight:600;color:#e2e8f0;margin-bottom:8px;"
-        "min-height:22px;}"
-        "#dbody{font-size:0.82rem;color:#94a3b8;line-height:1.7;}"
-        ".drow{margin-bottom:6px;word-break:break-word;}"
-        ".dkey{color:#60a5fa;font-weight:600;font-size:0.78rem;}"
-        "#dhint{color:#475569;font-size:0.82rem;text-align:center;margin-top:40px;}"
+        "#dtitle{font-size:0.95rem;font-weight:600;color:#e2e8f0;margin-bottom:10px;"
+        "min-height:22px;border-bottom:2px solid #334155;padding-bottom:6px;}"
+        "#dbody{font-size:0.82rem;color:#cbd5e1;line-height:1.75;}"
+        ".drow{margin-bottom:8px;padding:5px 8px;background:rgba(255,255,255,0.04);"
+        "border-radius:4px;word-break:break-word;}"
+        ".dkey{color:#60a5fa;font-weight:600;font-size:0.75rem;display:block;margin-bottom:1px;}"
+        ".dval{color:#e2e8f0;font-size:0.82rem;}"
+        "#dhint{color:#64748b;font-size:0.82rem;text-align:center;margin-top:48px;line-height:1.8;}"
         "</style>"
     )
     js_body = (
@@ -266,16 +293,17 @@ def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
         "const container=document.getElementById('network');"
         "const opts={"
         "  physics:{enabled:true,solver:'forceAtlas2Based',"
-        "    forceAtlas2Based:{gravitationalConstant:-55,springLength:130,"
-        "      springConstant:0.05,damping:0.42},"
-        "    stabilization:{iterations:250,updateInterval:25}},"
-        "  edges:{color:{color:'#475569',highlight:'#94a3b8'},"
-        "    font:{color:'#94a3b8',size:11,align:'middle',strokeWidth:2,strokeColor:'#0f172a'},"
-        "    arrows:{to:{enabled:true,scaleFactor:0.55}},"
-        "    smooth:{type:'cubicBezier',forceDirection:'none',roundness:0.4}},"
-        "  nodes:{font:{color:'#e2e8f0',size:13,strokeWidth:2,strokeColor:'#0f172a'},"
-        "    borderWidth:2,shadow:true},"
-        "  interaction:{hover:true,tooltipDelay:80},"
+        "    forceAtlas2Based:{gravitationalConstant:-80,centralGravity:0.005,"
+        "      springLength:150,springConstant:0.04,damping:0.5},"
+        "    stabilization:{iterations:200,fit:true}},"
+        "  edges:{"
+        "    font:{color:'rgba(255,255,255,0.2)',size:8,align:'middle',strokeWidth:0},"
+        "    arrows:{to:{enabled:true,scaleFactor:0.4}},"
+        "    smooth:{type:'continuous',roundness:0.3},"
+        "    selectionWidth:2},"
+        "  nodes:{font:{color:'#e5e7eb',size:11,face:\"'Segoe UI',sans-serif\",strokeWidth:0},"
+        "    borderWidth:1.5,borderWidthSelected:2.5},"
+        "  interaction:{hover:true,tooltipDelay:150,zoomView:true,dragView:true},"
         "  layout:{improvedLayout:false}"
         "};"
         "const network=new vis.Network(container,{nodes:nodesDS,edges:edgesDS},opts);"
@@ -293,22 +321,28 @@ def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
         "  meeting:'📅 회의',person:'👤 인물',topic:'💡 주제',"
         "  task:'✅ 할 일',decision:'⚖️ 결정',entity:'🔗 엔티티',utterance:'💬 발언'"
         "};"
+        "const typeBorder={"
+        "  meeting:'#60a5fa',person:'#a855f7',topic:'#22c55e',"
+        "  task:'#f59e0b',decision:'#f472b6',entity:'#ec4899',utterance:'#06b6d4'"
+        "};"
         "network.on('click',function(params){"
         "  const panel=document.getElementById('dbody');"
         "  const title=document.getElementById('dtitle');"
         "  if(!params.nodes.length){"
         "    title.textContent='노드 상세';"
+        "    title.style.borderColor='#334155';"
         "    panel.innerHTML='<p id=\"dhint\">노드를 클릭하여<br>상세 정보를 확인하세요</p>';"
         "    return;"
         "  }"
         "  const node=nodesDS.get(params.nodes[0]);"
         "  if(!node)return;"
         "  title.textContent=typeLabel[node._type]||node._type||'노드';"
+        "  title.style.borderColor=typeBorder[node._type]||'#334155';"
         "  const data=node._data||{};"
         "  let html='';"
         "  for(const[k,v] of Object.entries(data)){"
         "    if(v!==null&&v!==undefined&&v!==''){"
-        "      html+=`<div class=\"drow\"><span class=\"dkey\">${k}</span><br>${dv(String(v))}</div>`;"
+        "      html+=`<div class=\"drow\"><span class=\"dkey\">${k}</span><span class=\"dval\">${dv(String(v))}</span></div>`;"
         "    }"
         "  }"
         "  panel.innerHTML=html||'<span style=\"color:#475569\">데이터 없음</span>';"
@@ -316,7 +350,7 @@ def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
         # Double-click zoom
         "network.on('doubleClick',function(params){"
         "  if(params.nodes.length){"
-        "    network.focus(params.nodes[0],{scale:1.6,"
+        "    network.focus(params.nodes[0],{scale:1.5,"
         "      animation:{duration:500,easingFunction:'easeInOutQuad'}});"
         "  }"
         "});"
@@ -349,25 +383,41 @@ def render_graph_view(db_path: str):
                 return f"e{_eid_counter[0]}"
 
             def _add_node(nid, label, ntype, data, hidden=False):
+                glow = _NODE_GLOW.get(ntype, "rgba(148,163,184,0.2)")
+                border = _NODE_COLORS.get(ntype, "#94a3b8")
                 vis_nodes.append({
                     "id": nid,
                     "label": label,
                     "color": {
-                        "background": _NODE_COLORS[ntype],
-                        "border": _NODE_BORDER[ntype],
-                        "highlight": {"background": _NODE_COLORS[ntype], "border": "#ffffff"},
+                        "background": glow,
+                        "border": border,
+                        "highlight": {"background": border, "border": "#ffffff"},
+                        "hover":     {"background": border, "border": "#ffffff"},
                     },
-                    "size": _NODE_SIZE[ntype],
+                    "shadow": {"enabled": True, "color": glow, "size": 8, "x": 0, "y": 0},
+                    "size": _NODE_SIZE.get(ntype, 14),
                     "_type": ntype,
                     "_data": data,
                     "title": label,
                     "hidden": hidden,
+                    "shape": "dot",
                 })
 
-            def _add_edge(frm, to, label="", width=1.2, hidden=False):
+            def _add_edge(frm, to, rel_type="", label="", hidden=False):
+                ecfg = _EDGE_CFG.get(rel_type, {"color": "rgba(255,255,255,0.15)", "w": 1.2, "dash": False})
                 vis_edges.append({
-                    "id": _eid(), "from": frm, "to": to,
-                    "label": label, "width": width, "hidden": hidden,
+                    "id": _eid(),
+                    "from": frm,
+                    "to": to,
+                    "label": label or rel_type,
+                    "color": {
+                        "color": ecfg["color"],
+                        "highlight": "#ffffff",
+                        "hover": "#ffffff",
+                    },
+                    "width": ecfg["w"],
+                    "dashes": ecfg["dash"],
+                    "hidden": hidden,
                 })
 
             # ── Meeting nodes ─────────────────────────────────────────────────
@@ -452,58 +502,63 @@ def render_graph_view(db_path: str):
             for topic, decision in mgr.execute_cypher(
                 "MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description"
             ):
-                _add_edge(f"topic::{topic}", f"decision::{decision}", "RESULTED_IN", 2)
+                _add_edge(f"topic::{topic}", f"decision::{decision}", rel_type="RESULTED_IN")
 
             for person, task in mgr.execute_cypher(
                 "MATCH (p:Person)-[:ASSIGNED_TO]->(t:Task) RETURN p.name, t.description"
             ):
-                _add_edge(f"person::{person}", f"task::{task}", "담당", 1.5)
+                _add_edge(f"person::{person}", f"task::{task}", rel_type="ASSIGNED_TO", label="담당")
 
             for person, topic in mgr.execute_cypher(
                 "MATCH (p:Person)-[:PROPOSED]->(t:Topic) RETURN p.name, t.title"
             ):
-                _add_edge(f"person::{person}", f"topic::{topic}", "제안", 1.5)
+                _add_edge(f"person::{person}", f"topic::{topic}", rel_type="PROPOSED", label="제안")
 
             for mid, ttitle in mgr.execute_cypher(
                 "MATCH (m:Meeting)-[:DISCUSSED]->(t:Topic) RETURN m.id, t.title"
             ):
-                _add_edge(f"meeting::{mid}", f"topic::{ttitle}", "DISCUSSED")
+                _add_edge(f"meeting::{mid}", f"topic::{ttitle}", rel_type="DISCUSSED")
 
             for mid, tdesc in mgr.execute_cypher(
                 "MATCH (m:Meeting)-[:HAS_TASK]->(t:Task) RETURN m.id, t.description"
             ):
-                _add_edge(f"meeting::{mid}", f"task::{tdesc}", "HAS_TASK")
+                _add_edge(f"meeting::{mid}", f"task::{tdesc}", rel_type="HAS_TASK")
 
             for mid, ddesc in mgr.execute_cypher(
                 "MATCH (m:Meeting)-[:HAS_DECISION]->(d:Decision) RETURN m.id, d.description"
             ):
-                _add_edge(f"meeting::{mid}", f"decision::{ddesc}", "HAS_DECISION")
+                _add_edge(f"meeting::{mid}", f"decision::{ddesc}", rel_type="HAS_DECISION")
 
             # Utterance edges (hidden by default)
             for pname, uid in mgr.execute_cypher(
                 "MATCH (p:Person)-[:SPOKE]->(u:Utterance) RETURN p.name, u.id LIMIT 200"
             ):
-                _add_edge(f"person::{pname}", f"utterance::{uid}", "SPOKE", hidden=True)
+                _add_edge(f"person::{pname}", f"utterance::{uid}", rel_type="SPOKE", hidden=True)
+
+            for uid_a, uid_b in mgr.execute_cypher(
+                "MATCH (a:Utterance)-[:NEXT]->(b:Utterance) RETURN a.id, b.id LIMIT 300"
+            ):
+                _add_edge(f"utterance::{uid_a}", f"utterance::{uid_b}", rel_type="NEXT", hidden=True)
 
             for mid, uid in mgr.execute_cypher(
                 "MATCH (m:Meeting)-[:CONTAINS]->(u:Utterance) RETURN m.id, u.id LIMIT 200"
             ):
-                _add_edge(f"meeting::{mid}", f"utterance::{uid}", "CONTAINS", hidden=True)
+                _add_edge(f"meeting::{mid}", f"utterance::{uid}", rel_type="CONTAINS", hidden=True)
 
             # Entity edges
             try:
                 for src, rtype, tgt in mgr.execute_cypher(
                     "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) RETURN a.name, r.relation_type, b.name"
                 ):
-                    _add_edge(f"entity::{src}", f"entity::{tgt}", rtype or "RELATED_TO", 1.5)
+                    _add_edge(f"entity::{src}", f"entity::{tgt}", rel_type="RELATED_TO", label=rtype or "RELATED_TO")
                 for ttitle, ename in mgr.execute_cypher(
                     "MATCH (t:Topic)-[:MENTIONS]->(e:Entity) RETURN t.title, e.name"
                 ):
-                    _add_edge(f"topic::{ttitle}", f"entity::{ename}", "MENTIONS")
+                    _add_edge(f"topic::{ttitle}", f"entity::{ename}", rel_type="MENTIONS")
                 for mid, ename in mgr.execute_cypher(
                     "MATCH (m:Meeting)-[:HAS_ENTITY]->(e:Entity) RETURN m.id, e.name"
                 ):
-                    _add_edge(f"meeting::{mid}", f"entity::{ename}", "HAS_ENTITY")
+                    _add_edge(f"meeting::{mid}", f"entity::{ename}", rel_type="HAS_ENTITY")
             except Exception:
                 pass
 
