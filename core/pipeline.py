@@ -4,6 +4,7 @@ Lazy loading: each module is loaded only on first use.
 """
 
 import datetime
+import json
 import logging
 import os
 import threading
@@ -89,12 +90,13 @@ class SpeakNodeEngine:
             return self.extractor.extract(transcript_text)
 
     def process(self, audio_path: str, db_path: str | None = None, meeting_title: str | None = None,
-                progress_callback=None):
+                progress_callback=None, meeting_id: str | None = None):
         """Full pipeline: STT -> Embedding -> LLM extraction -> DB ingest.
-        
+
         Args:
-            progress_callback: Optional callable(step: str, percent: int, message: str)
-                               for reporting real-time progress.
+            db_path: KuzuDB directory path. A new directory is created if it doesn't exist.
+            meeting_id: Optional pre-generated meeting ID. Auto-generated if not provided.
+            progress_callback: Optional callable(step: str, percent: int, message: str).
         """
         def _progress(step: str, percent: int, message: str):
             if progress_callback:
@@ -125,7 +127,7 @@ class SpeakNodeEngine:
         # Step 2: Embedding
         _progress("embedding", 30, "임베딩 생성 중...")
         logger.info("Embedding segments...")
-        target_db_path = db_path if db_path else self.config.get_chat_db_path()
+        target_db_path = db_path if db_path else self.config.get_meeting_db_path()
 
         # Run embedding before opening DB to avoid orphan Meeting nodes on failure.
         embeddings = self.embed(segments)
@@ -133,7 +135,8 @@ class SpeakNodeEngine:
 
         with KuzuManager(db_path=target_db_path, config=self.config) as db:
             now = datetime.datetime.now()
-            meeting_id = f"m_{now.strftime('%Y%m%d_%H%M%S_%f')}"
+            if not meeting_id:
+                meeting_id = f"m_{now.strftime('%Y%m%d_%H%M%S_%f')}"
             normalized_title = (meeting_title or "").strip()
             if not normalized_title:
                 source_name = os.path.splitext(os.path.basename(audio_path))[0].strip()
@@ -177,6 +180,19 @@ class SpeakNodeEngine:
             _progress("graph", 90, "지식 그래프 구축 완료")
 
         logger.info("Pipeline complete.")
+        # Write metadata.json so the Streamlit UI can display a friendly meeting label
+        # without re-opening KuzuDB for each meeting in the list.
+        try:
+            meta_path = os.path.join(target_db_path, "metadata.json")
+            with open(meta_path, "w", encoding="utf-8") as _mf:
+                json.dump({
+                    "meeting_id": meeting_id,
+                    "title": normalized_title,
+                    "date": now.strftime("%Y-%m-%d"),
+                    "source_file": os.path.basename(audio_path),
+                }, _mf, ensure_ascii=False, indent=2)
+        except Exception as _me:
+            logger.warning("Failed to write metadata.json: %s", _me)
         # AnalysisResult -> dict (backward compat)
         if hasattr(analysis_data, "to_dict"):
             result_dict = analysis_data.to_dict()
@@ -190,7 +206,7 @@ class SpeakNodeEngine:
         """Create an Agent instance bound to the given DB."""
         from core.agent.agent import SpeakNodeAgent
 
-        target_db_path = db_path or self.config.get_chat_db_path()
+        target_db_path = db_path or self.config.get_meeting_db_path()
         return SpeakNodeAgent(db_path=target_db_path, config=self.config)
 
 

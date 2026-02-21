@@ -27,9 +27,5 @@ networkx==3.3
 matplotlib==3.10.8
 Pillow==11.0.0
 
-# FastAPI server
-fastapi==0.129.0
-uvicorn==0.40.0
-
 # Optional: speaker diarization
 # pyannote.audio==3.3.0  # requires HuggingFace token

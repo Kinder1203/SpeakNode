@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 from core.agent.tools import default_registry as registry
-from core.db.kuzu_manager import decode_scoped_value
 
 
 def _to_int(value, default: int) -> int:
@@ -79,7 +78,7 @@ def search_by_structure(args: dict, db, rag) -> str:
                     "RETURN d.description LIMIT 5",
                     {"title": raw_title},
                 )
-                decisions = [decode_scoped_value(r[0]) for r in dec_rows]
+                decisions = [r[0] for r in dec_rows]
             except Exception:
                 decisions = []
             proposer_str = ", ".join(proposers) if proposers else "미지정"
@@ -104,10 +103,8 @@ def search_by_structure(args: dict, db, rag) -> str:
         for t in items:
             deadline = t.get("deadline") or "미정"
             assignee = t.get("assignee", "미지정")
-            meeting_id = t.get("meeting_id", "")
-            meeting_tag = f" [회의: {meeting_id}]" if meeting_id else ""
             lines.append(
-                f"- {t['description']} (담당: {assignee}, 기한: {deadline}, 상태: {t.get('status', '?')}){meeting_tag}"
+                f"- {t['description']} (담당: {assignee}, 기한: {deadline}, 상태: {t.get('status', '?')})"
             )
         return "\n".join(lines)
 
@@ -122,15 +119,14 @@ def search_by_structure(args: dict, db, rag) -> str:
             return "등록된 결정 사항이 없습니다."
         lines = []
         for d in items:
-            raw_desc = d.get("id", d["description"])
-            desc = decode_scoped_value(raw_desc)
+            desc = d.get("description", "")
             try:
                 topic_rows = db.execute_cypher(
                     "MATCH (t:Topic)-[:RESULTED_IN]->(dd:Decision {description: $ddesc}) "
                     "RETURN t.title LIMIT 1",
-                    {"ddesc": raw_desc},
+                    {"ddesc": desc},
                 )
-                source_topic = decode_scoped_value(topic_rows[0][0]) if topic_rows else None
+                source_topic = topic_rows[0][0] if topic_rows else None
             except Exception:
                 source_topic = None
             line = f"- {desc}"

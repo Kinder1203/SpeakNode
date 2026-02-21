@@ -1,7 +1,7 @@
 """DB diagnostic script.
 
 Usage:
-    python -m core.db.check_db [chat_id]
+    python -m core.db.check_db [meeting_id]
 """
 
 from __future__ import annotations
@@ -9,30 +9,30 @@ from __future__ import annotations
 import os
 import sys
 
-from core.config import SpeakNodeConfig, get_chat_db_path, list_chat_ids
+from core.config import SpeakNodeConfig, get_meeting_db_path, list_meeting_ids
 from core.db.kuzu_manager import KuzuManager
 
 _NODE_TABLES = ["Person", "Topic", "Task", "Decision", "Utterance", "Meeting", "Entity"]
 
 
-def check_database(chat_id: str | None = None) -> None:
+def check_database(meeting_id: str | None = None) -> None:
     config = SpeakNodeConfig()
 
-    if chat_id:
-        _check_single(chat_id, config)
+    if meeting_id:
+        _check_single(meeting_id, config)
     else:
-        ids = list_chat_ids(config)
+        ids = list_meeting_ids(config)
         if not ids:
-            print("등록된 채팅 DB가 없습니다.")
+            print("등록된 회의 DB가 없습니다.")
             return
-        for cid in sorted(ids):
-            _check_single(cid, config)
+        for mid in sorted(ids):
+            _check_single(mid, config)
             print()
 
 
-def _check_single(chat_id: str, config: SpeakNodeConfig) -> None:
-    db_path = get_chat_db_path(chat_id, config)
-    print(f"=== Chat: {chat_id} ===")
+def _check_single(meeting_id: str, config: SpeakNodeConfig) -> None:
+    db_path = get_meeting_db_path(meeting_id, config)
+    print(f"=== Meeting: {meeting_id} ===")
     print(f"    경로: {db_path}")
 
     if not os.path.exists(db_path):
@@ -72,4 +72,4 @@ def _check_single(chat_id: str, config: SpeakNodeConfig) -> None:
 
 if __name__ == "__main__":
     _target = sys.argv[1] if len(sys.argv) > 1 else None
-    check_database(_target)
+    check_database(meeting_id=_target)

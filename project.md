@@ -1,19 +1,23 @@
-# SpeakNode Project Blueprint (v2.2)
+# SpeakNode Project Blueprint (v3.0)
 
-Local meeting knowledge extraction and agent-based retrieval system.
+Local-first AI meeting knowledge extraction system with a single-user Streamlit desktop interface.
 
 ## 1. Architecture
 
 ### Core Principle
 
-- Python Brain + Kotlin Body
-- Offline-first (local-first), file-based graph memory
+- **Local-First, Single-User**: All models and data run on-device. No cloud services, no network layer.
+- **Direct Import**: Streamlit UI imports `core/` Python modules directly — no HTTP intermediary.
+- **1 Meeting = 1 KuzuDB**: Each audio analysis creates an independent graph database directory, eliminating cross-meeting key collision complexity.
 
 ### Layers
 
 1. **Core Layer** (Python) — STT, Embedding, Extraction, Graph DB, Agent
-2. **Interface Layer A** — Streamlit dashboard for verification and operation
-3. **Interface Layer B** — FastAPI server (v5.2.0) + Kotlin Compose Desktop client
+2. **Interface Layer** — Streamlit desktop app (`interfaces/streamlit_app/`)
+
+```
+[Streamlit App]  ──direct Python import──▶  [core/]  ──stores to──▶  [database/meetings/{id}/]
+```
 
 ## 2. Technical Stack
 
@@ -24,13 +28,9 @@ Local meeting knowledge extraction and agent-based retrieval system.
 | Embedding | Sentence-Transformers | 5.2.2 | Utterance vectorization (all-MiniLM-L6-v2, 384d) |
 | LLM | Ollama + LangChain | 1.2.10 | Information extraction and response generation |
 | Agent | LangGraph | 1.0.8 | Router-Tool-Synthesizer flow |
-| DB | KuzuDB | 0.11.3 | Graph + vector storage (cosine similarity), Entity/Relation support (schema v3) |
+| DB | KuzuDB | 0.11.3 | Graph + vector storage (cosine similarity) |
 | Data Model | Pydantic | 2.12.5 | Domain model validation |
-| API | FastAPI + Uvicorn | 0.129.0 / 0.40.0 | Python service layer |
-| UI (Python) | Streamlit + PyVis | 1.54.0 / 0.3.2 | Operation UI + graph visualization |
-| UI (Desktop) | Compose Multiplatform | 1.7.3 | Kotlin desktop client (Material 3) |
-| HTTP Client | Ktor | 3.0.3 | Kotlin API client (CIO engine) |
-| Serialization | Kotlinx Serialization | 1.7.3 | Request/Response models |
+| UI | Streamlit + PyVis | 1.54.0 / 0.3.2 | Desktop app + graph visualization |
 | GPU | PyTorch | 2.8.0 | CUDA acceleration for STT |
 
 ## 3. Data Flow
@@ -38,7 +38,7 @@ Local meeting knowledge extraction and agent-based retrieval system.
 1. **Transcribe** — Convert audio to utterance segments (optional speaker diarization)
 2. **Embed** — Generate utterance embeddings (all-MiniLM-L6-v2, 384d)
 3. **Extract** — Structure topics, decisions, tasks, people, entities, and relations (conservative Korean signal-based extraction + comprehensive entity extraction)
-4. **Ingest** — Store as a meeting-scoped graph (scoped keys: `meeting_id::value`)
+4. **Ingest** — Store as a per-meeting graph (`database/meetings/{meeting_id}/`). Plain-text PKs within each isolated DB.
 5. **Query** — Hybrid RAG + Agent response (vector + graph + Cypher)
 6. **Cypher Query** — Natural language to read-only Cypher translation (forbidden token validation)
 7. **Share** — Graph dump sharing/restoration via compressed PNG metadata (`speaknode_graph_bundle_v1`)
@@ -83,43 +83,28 @@ CREATE REL TABLE MENTIONS(FROM Topic TO Entity);
 CREATE REL TABLE HAS_ENTITY(FROM Meeting TO Entity);
 ```
 
-### Scoping Strategy
+### DB Strategy (Document-based)
 
-Topic/Task/Decision/Entity primary keys use `{meeting_id}::{plain_text}` format to prevent cross-meeting entity collisions. Decoding via `decode_scoped_value()` / `extract_scope_from_value()` utilities.
+Each meeting gets its own isolated KuzuDB directory. PKs are **plain text** — no `meeting_id::value` scoping required.
 
-## 5. API Scope (FastAPI v5.2.0)
+```
+database/meetings/
+├── m_20260221_143000_123456/     ← 1 directory per meeting
+│   ├── metadata.json             ← {meeting_id, title, date, source_file}
+│   └── <kuzu internal files>
+└── m_20260220_091500_654321/
+```
 
-| Method | Endpoint | Description | Key Parameters |
-|---|---|---|---|
-| GET | `/health` | Server health check | — |
-| GET | `/chats` | List chat sessions | — |
-| POST | `/chats` | Create chat session | `chat_id` (body) |
-| DELETE | `/chats/{chat_id}` | Reset chat DB | `chat_id` (path) |
-| POST | `/analyze` | Audio analysis + graph ingestion | `file` (multipart), `chat_id`, `meeting_title` (form) |
-| POST | `/agent/query` | Agent query | `question`, `chat_id` (body) |
-| GET | `/meetings` | List meetings | `chat_id`, `limit` (query) |
-| GET | `/meetings/{meeting_id}` | Meeting details | `meeting_id` (path), `chat_id` (query) |
-| GET | `/graph/export` | Export graph dump | `chat_id`, `include_embeddings` (query) |
-| POST | `/graph/import` | Import graph dump | `chat_id`, `graph_dump` (body) |
-| PATCH | `/nodes/update` | Update node properties | `chat_id`, `node_type`, `node_id`, `fields` (body) |
+`metadata.json` is written by the pipeline after successful ingest, allowing the UI to list meetings with friendly labels without opening each DB.
 
-### Server Protection
-
-- **CORS**: Environment variable `SPEAKNODE_CORS_ORIGINS` (default: `http://localhost:3000`)
-- **File upload**: Extension validation (`.mp3`, `.wav`, `.m4a`), size limit (512MB)
-- **Graph import**: Body size limit (25MB), element count limit (200K)
-- **Per-chat async lock**: `asyncio.Lock` per chat session for concurrency control
-- **Node update rules**: Whitelisted `node_type`/`fields` + task status validation
-- **ThreadPoolExecutor**: Separate workers for analyze/agent CPU tasks
-
-## 6. Agent Architecture
+## 5. Agent Architecture
 
 ### Tools (7)
 
 | Tool | Description | Source |
 |---|---|---|
 | `search_by_meaning` | Vector-based semantic search (Utterance similarity) | search_tools.py |
-| `search_by_structure` | Structural graph traversal (topic/task/decision/person/meeting) | search_tools.py |
+| `search_by_structure` | Structural graph traversal (topic/task/decision/person/meeting/entity) | search_tools.py |
 | `hybrid_search` | Combined semantic + structural search | search_tools.py |
 | `search_by_cypher` | NL → read-only Cypher translation + execution | cypher_tools.py |
 | `get_meeting_summary` | Meeting summary retrieval | meeting_tools.py |
@@ -135,108 +120,64 @@ LangGraph 3-node graph:
 
 DB lifecycle is managed per `query()` invocation scope.
 
-## 7. Directory Structure
+## 6. Directory Structure
 
 ```text
 SpeakNode/
 ├── core/
-│   ├── __init__.py
-│   ├── config.py              # Central configuration + chat session utilities
-│   ├── domain.py              # Pydantic domain models (Utterance, Person, Topic, Task, Decision, Entity, Relation, Meeting, AnalysisResult, MeetingSummary)
-│   ├── utils.py               # Shared business logic (task status normalization, LLM token estimation/truncation)
-│   ├── embedding.py           # SentenceTransformer singleton cache
-│   ├── pipeline.py            # SpeakNodeEngine: STT → Embed → LLM → DB pipeline (lazy loading, thread-safe)
-│   ├── stt/
-│   │   └── transcriber.py     # Faster-Whisper STT + optional pyannote speaker diarization
-│   ├── llm/
-│   │   └── extractor.py       # LangChain/Ollama structured extraction (topics, tasks, decisions, entities, relations; conservative Korean signal patterns)
-│   ├── db/
-│   │   ├── kuzu_manager.py    # KuzuDB unified manager (schema v3, CRUD, Entity/Relation support, vector search, export/import, transactions)
-│   │   └── check_db.py        # DB diagnostic CLI script
-│   ├── shared/
-│   │   └── share_manager.py   # PNG metadata graph sharing (zlib + base64, speaknode_graph_bundle_v1)
+│   ├── config.py              # Central config + meeting DB path helpers (sanitize_meeting_id, get_meeting_db_path, list_meeting_ids)
+│   ├── domain.py              # Pydantic domain models (Utterance, Person, Topic, Task, Decision, Entity, Relation, Meeting, AnalysisResult)
+│   ├── utils.py               # Task status normalization, LLM token estimation
+│   ├── embedding.py           # SentenceTransformer singleton cache (thread-safe double-check)
+│   ├── pipeline.py            # SpeakNodeEngine: STT → Embed → LLM → DB pipeline (lazy loading, thread-safe locks, metadata.json output)
+│   ├── stt/transcriber.py     # Faster-Whisper STT + optional pyannote diarization
+│   ├── llm/extractor.py       # Ollama structured extraction (conservative Korean signal + entity extraction)
+│   ├── db/kuzu_manager.py     # KuzuDB manager (schema v3, plain-text PKs, vector search, export/import)
+│   ├── shared/share_manager.py # PNG metadata sharing (zlib + base64, speaknode_graph_bundle_v1)
 │   └── agent/
-│       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer, query-scoped DB lifecycle)
-│       ├── hybrid_rag.py      # Hybrid RAG engine (vector + graph + Cypher + Entity search)
-│       └── tools/
-│           ├── __init__.py    # Decorator-based ToolRegistry
-│           ├── search_tools.py
-│           ├── cypher_tools.py
-│           ├── meeting_tools.py
-│           ├── email_tools.py
-│           └── general_tools.py
+│       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer)
+│       ├── hybrid_rag.py      # Hybrid RAG (vector + graph + Cypher + Entity)
+│       └── tools/             # ToolRegistry + 7 registered tools
 ├── interfaces/
-│   ├── streamlit_app/
-│   │   ├── app.py             # Streamlit dashboard (multi-chat session management)
-│   │   └── view_components.py # UI components (graph viewer, node editor, card export/import)
-│   └── api_server/
-│       └── server.py          # FastAPI v5.2.0 (CORS, async locks, file validation, ThreadPoolExecutor)
-├── kotlin-client/
-│   ├── build.gradle.kts       # Compose Desktop build (v5.2.0)
-│   ├── settings.gradle.kts
-│   ├── gradle.properties
-│   └── src/main/kotlin/com/speaknode/client/
-│       ├── Main.kt            # Entry point (1200×800 window)
-│       ├── api/
-│       │   ├── SpeakNodeApi.kt       # Ktor HTTP client (all endpoints as suspend functions)
-│       │   └── models/ApiModels.kt   # @Serializable request/response models
-│       ├── ui/
-│       │   ├── App.kt               # Root Composable (2-pane layout)
-│       │   ├── theme/Theme.kt       # Material 3 dark theme
-│       │   ├── components/Sidebar.kt # Sidebar (server status, chat list, navigation)
-│       │   └── screens/
-│       │       ├── MeetingScreen.kt  # Meeting analysis/list screen
-│       │       └── AgentScreen.kt    # AI Agent conversation screen
-│       └── viewmodel/
-│           ├── AppViewModel.kt       # Global state management (StateFlow)
-│           └── AgentViewModel.kt     # Agent conversation state (StateFlow)
+│   └── streamlit_app/
+│       ├── app.py             # Streamlit app (meeting selection, analysis, agent, save)
+│       └── view_components.py # Graph viewer, node editor, PNG export/import
 ├── database/
-│   └── chats/                 # Per-chat KuzuDB files
-├── lib/
-│   ├── bindings/utils.js      # PyVis network neighbor highlight utility
-│   ├── tom-select/            # Tom Select dropdown library (JS + CSS)
-│   └── vis-9.1.2/             # vis-network 9.1.2 graph visualization (JS + CSS)
-├── shared_cards/              # Shared card PNG output directory
-├── scripts/
-│   └── api_smoke_test.py      # API smoke test (stdlib only, no external dependencies)
+│   └── meetings/              # Per-meeting KuzuDB directories (auto-created on first analysis)
 ├── docs/
-│   └── api_examples.http      # HTTP request collection (11 examples)
-└── requirements.txt
+├── scripts/
+├── requirements.txt
+└── README.md
 ```
 
-## 8. Design Characteristics
+## 7. Design Characteristics
 
 ### Pipeline (`SpeakNodeEngine`)
 
 - **Lazy loading**: Whisper/Extractor loaded on first invocation only
-- **Thread safety**: Independent `threading.Lock` per component
+- **Thread safety**: Independent `threading.Lock` per component (transcriber, embedder, extractor) — retained for Streamlit's internal threading
 - **Embedding-first**: Embeddings completed before DB open → prevents orphan Meeting nodes on failure
+- **meeting_id handoff**: Accepts an optional pre-generated `meeting_id` from the caller; auto-generates if absent
+- **metadata.json**: Written after successful DB ingest to enable fast UI listing without reopening KuzuDB
 
 ### DB Manager (`KuzuManager`)
 
 - **Context Manager**: Automatic resource release via `with` statement
-- **Manual transactions**: `BEGIN/COMMIT/ROLLBACK` wrapping (`_transaction()`)
-- **Graph dump serialization**: `export_graph_dump()` / `restore_graph_dump()` (schema version 3)
-- **Vector search**: Built-in `array_cosine_similarity()` function
-- **Entity support**: Entity nodes (person/technology/organization/concept/event) with RELATED_TO, MENTIONS, HAS_ENTITY edges
-- **Legacy compatibility**: Fallback queries for old DBs without HAS_TASK/HAS_DECISION/Entity edges
+- **Manual transactions**: `BEGIN/COMMIT/ROLLBACK` wrapping
+- **Plain-text PKs**: No scoped key encoding/decoding — Topic/Task/Decision/Entity use plain text as PK within each per-meeting DB
+- **Vector search**: `array_cosine_similarity()` built-in
+- **Export/Restore**: `export_graph_dump()` / `restore_graph_dump()` (schema version 3)
+- **Legacy fallback**: Graceful handling of old DBs without HAS_TASK/HAS_DECISION/Entity edges
 
 ### Hybrid RAG
 
 - **Vector search**: Cosine similarity-based Utterance retrieval
-- **Graph search**: Entity type-specific structural traversal (topic/task/decision/person/meeting/entity)
-- **Cypher search**: LLM NL→Cypher generation → read-only validation (`FORBIDDEN_CYPHER_TOKENS`) → execution
-- **Entity search**: Entity node retrieval with keyword/type filters + RELATED_TO edge traversal
-- **Hybrid fusion**: Keyword-based intent detection → combine relevant search results (includes entity baseline)
-
-### LLM Extractor
-
-- **Conservative extraction**: Returns empty arrays for decisions/tasks when Korean signal patterns (`결정|합의|하기로 했...`, `할 일|담당|까지 완료...`) are absent
-- **Entity extraction**: Comprehensive named entity recognition (person, technology, organization, concept, event) with inter-entity relation extraction
-- **Context window management**: Transcript truncation at 27K token limit
+- **Graph search**: Entity type-specific structural traversal
+- **Cypher search**: LLM NL→Cypher → read-only validation → execution
+- **Hybrid fusion**: Keyword intent detection → combine relevant results
 
 ### Share System (`ShareManager`)
 
-- PNG image metadata embedding: analysis results + graph dump compressed via zlib + base64
-- Format: `speaknode_graph_bundle_v1` (analysis_result + graph_dump + include_embeddings flag)
-- Legacy `speaknode_data` field compatibility
+- PNG metadata embedding: analysis + graph dump via zlib + base64
+- Format: `speaknode_graph_bundle_v1` (analysis_result + graph_dump + include_embeddings)
+- Legacy `speaknode_data` field compatibility maintained

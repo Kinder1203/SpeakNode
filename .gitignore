@@ -23,18 +23,15 @@ htmlcov/
 .env.*
 !.env.example
 
-# Local databases & generated data 
+# Local databases & generated data
+# Per-meeting KuzuDB directories are auto-created on first run.
 database/
-*.kuzu
-*.sqlite
-*.sqlite3
-*.db
 
-# Media / uploads
-temp_uploads/
-*.mp3
-*.wav
-*.m4a
+# Temporary audio files created at project root during analysis
+temp_*.mp3
+temp_*.wav
+temp_*.m4a
+temp_*.ogg
 
 # Shared cards output
 shared_cards/
@@ -44,17 +41,11 @@ shared_cards/
 *.tmp
 *.bak
 
-# Kotlin / Gradle 
-kotlin-client/.gradle/
-kotlin-client/build/
-kotlin-client/out/
-kotlin-client/local.properties
-
-# Editor / OS noise 
+# Editor / OS noise
 .DS_Store
 Thumbs.db
 .idea/
-.vscode/
+.vscode/settings.json
 *.swp
 *~
 

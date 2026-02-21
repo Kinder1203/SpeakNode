@@ -14,11 +14,7 @@ from PIL.PngImagePlugin import PngInfo
 from pyvis.network import Network
 
 from core.config import SpeakNodeConfig
-from core.db.kuzu_manager import (
-    KuzuManager,
-    decode_scoped_value,
-    extract_scope_from_value,
-)
+from core.db.kuzu_manager import KuzuManager
 from core.utils import normalize_task_status, TASK_STATUS_OPTIONS
 
 logger = logging.getLogger(__name__)
@@ -29,14 +25,6 @@ def _encode_payload_for_png(payload: dict) -> str:
     raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     compressed = zlib.compress(raw, level=9)
     return base64.b64encode(compressed).decode("ascii")
-
-
-def _format_scoped_label(raw_value: str) -> str:
-    plain = decode_scoped_value(raw_value)
-    meeting_scope = extract_scope_from_value(raw_value)
-    if meeting_scope:
-        return f"{plain} ({meeting_scope})"
-    return plain
 
 
 def set_korean_font():
@@ -108,26 +96,26 @@ def render_graph_view(db_path):
             for (title,) in manager.execute_cypher("MATCH (t:Topic) RETURN t.title"):
                 net.add_node(
                     f"topic::{title}",
-                    label=decode_scoped_value(title),
+                    label=title,
                     color="#9b59b6",
                     shape="box",
-                    title=_format_scoped_label(title),
+                    title=title,
                 )
             for (desc,) in manager.execute_cypher("MATCH (d:Decision) RETURN d.description"):
                 net.add_node(
                     f"decision::{desc}",
-                    label=decode_scoped_value(desc),
+                    label=desc,
                     color="#f1c40f",
                     shape="triangle",
-                    title=_format_scoped_label(desc),
+                    title=desc,
                 )
             for (desc,) in manager.execute_cypher("MATCH (t:Task) RETURN t.description"):
                 net.add_node(
                     f"task::{desc}",
-                    label=decode_scoped_value(desc),
+                    label=desc,
                     color="#3498db",
                     shape="dot",
-                    title=_format_scoped_label(desc),
+                    title=desc,
                 )
 
             for topic, decision in manager.execute_cypher(
@@ -146,13 +134,12 @@ def render_graph_view(db_path):
             # Entity nodes and edges (graceful fallback for old DBs)
             try:
                 for name, etype, desc in manager.execute_cypher("MATCH (e:Entity) RETURN e.name, e.entity_type, e.description"):
-                    plain = decode_scoped_value(name)
                     net.add_node(
                         f"entity::{name}",
-                        label=f"{plain}\n[{etype or 'concept'}]",
+                        label=f"{name}\n[{etype or 'concept'}]",
                         color="#e67e22",
                         shape="diamond",
-                        title=f"{etype}: {desc or plain}",
+                        title=f"{etype}: {desc or name}",
                     )
                 for src, rtype, tgt in manager.execute_cypher(
                     "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) RETURN a.name, r.relation_type, b.name"
@@ -197,7 +184,6 @@ def render_graph_editor(db_path):
                     "Select Topic",
                     list(topic_map.keys()),
                     key="editor_topic_target",
-                    format_func=_format_scoped_label,
                 )
                 summary_key = f"editor_topic_summary::{selected}"
                 new_summary = st.text_area(
@@ -233,7 +219,6 @@ def render_graph_editor(db_path):
                     "Select Task",
                     list(task_map.keys()),
                     key="editor_task_target",
-                    format_func=_format_scoped_label,
                 )
                 deadline_key = f"editor_task_deadline::{selected}"
                 status_key = f"editor_task_status::{selected}"
@@ -301,7 +286,6 @@ def render_graph_editor(db_path):
                     "Select Entity",
                     list(entity_map.keys()),
                     key="editor_entity_target",
-                    format_func=_format_scoped_label,
                 )
                 desc_key = f"editor_entity_desc::{selected}"
                 new_desc = st.text_area(
@@ -363,17 +347,15 @@ def generate_static_graph_image(db_path, analysis_json, include_embeddings=False
 
             for (title,) in manager.execute_cypher("MATCH (t:Topic) RETURN t.title"):
                 G.add_node(title, color="#9b59b6")
-                labels[title] = decode_scoped_value(title)
+                labels[title] = title
 
             for (desc,) in manager.execute_cypher("MATCH (d:Decision) RETURN d.description"):
-                plain = decode_scoped_value(desc)
-                label = (plain[:10] + "..") if len(plain) > 10 else plain
+                label = (desc[:10] + "..") if len(desc) > 10 else desc
                 G.add_node(desc, color="#f1c40f")
                 labels[desc] = label
 
             for (desc,) in manager.execute_cypher("MATCH (t:Task) RETURN t.description"):
-                plain = decode_scoped_value(desc)
-                label = (plain[:10] + "..") if len(plain) > 10 else plain
+                label = (desc[:10] + "..") if len(desc) > 10 else desc
                 G.add_node(desc, color="#3498db")
                 labels[desc] = label
 
@@ -398,8 +380,7 @@ def generate_static_graph_image(db_path, analysis_json, include_embeddings=False
             # Entity nodes and edges for static image (graceful fallback)
             try:
                 for name, etype, desc in manager.execute_cypher("MATCH (e:Entity) RETURN e.name, e.entity_type, e.description"):
-                    plain = decode_scoped_value(name)
-                    label = (plain[:12] + "..") if len(plain) > 12 else plain
+                    label = (name[:12] + "..") if len(name) > 12 else name
                     G.add_node(name, color="#e67e22")
                     labels[name] = label
                 for src, rtype, tgt in manager.execute_cypher(

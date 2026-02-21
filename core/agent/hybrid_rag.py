@@ -8,7 +8,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 
 from core.config import SpeakNodeConfig
-from core.db.kuzu_manager import KuzuManager, decode_scoped_value
+from core.db.kuzu_manager import KuzuManager
 from core.embedding import get_embedder
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,6 @@ Relations:
 
 Entity.entity_type can be: person, technology, organization, concept, event.
 Use meeting-aware relations (HAS_TASK, HAS_DECISION, DISCUSSED, CONTAINS, HAS_ENTITY) when possible.
-Topic.title / Task.description / Decision.description / Entity.name can be stored as "<meeting_id>::<plain_text>".
 For user-facing keyword filtering, prefer CONTAINS over exact equality.
 """
         response = self.cypher_llm.invoke(
@@ -287,7 +286,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
                     "RETURN d.description LIMIT 5",
                     {"title": raw_title},
                 )
-                t["decisions"] = [decode_scoped_value(r[0]) for r in dec_rows]
+                t["decisions"] = [r[0] for r in dec_rows]
             except Exception:
                 t["decisions"] = []
 
@@ -300,7 +299,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
                     "RETURN t.title LIMIT 5",
                     {"name": name},
                 )
-                p["proposed_topics"] = [decode_scoped_value(r[0]) for r in topic_rows]
+                p["proposed_topics"] = [r[0] for r in topic_rows]
             except Exception:
                 p["proposed_topics"] = []
             try:
@@ -310,7 +309,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
                     {"name": name},
                 )
                 p["assigned_tasks"] = [
-                    {"description": decode_scoped_value(r[0]), "status": r[1] or "?"}
+                    {"description": r[0], "status": r[1] or "?"}
                     for r in task_rows
                 ]
             except Exception:
@@ -363,7 +362,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         if decisions:
             context_parts.append("\n## 결정 사항 (Decision)")
             for d in decisions:
-                context_parts.append(f"- {decode_scoped_value(d['description'])}")
+                context_parts.append(f"- {d['description']}")
 
         if people:
             context_parts.append("\n## 참여자")
