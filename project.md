@@ -13,10 +13,10 @@ Local-first AI meeting knowledge extraction system with a single-user Streamlit 
 ### Layers
 
 1. **Core Layer** (Python) — STT, Embedding, Extraction, Graph DB, Agent
-2. **Interface Layer** — Streamlit desktop app (`interfaces/streamlit_app/`)
+2. **Interface Layer** — Streamlit desktop app (`streamlit_app/`)
 
 ```
-[Streamlit App]  ──direct Python import──▶  [core/]  ──stores to──▶  [database/meetings/{id}/]
+[streamlit_app/]  ──direct Python import──▶  [core/]  ──stores to──▶  [database/meetings/{id}/]
 ```
 
 ## 2. Technical Stack
@@ -138,14 +138,12 @@ SpeakNode/
 │       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer)
 │       ├── hybrid_rag.py      # Hybrid RAG (vector + graph + Cypher + Entity)
 │       └── tools/             # ToolRegistry + 7 registered tools
-├── interfaces/
-│   └── streamlit_app/
-│       ├── app.py             # Streamlit app (meeting selection, analysis, agent, save)
-│       └── view_components.py # Graph viewer, node editor, PNG export/import
+├── streamlit_app/
+│   ├── app.py             # Streamlit app (meeting selection, analysis, agent, save)
+│   └── view_components.py # Graph viewer, node editor, PNG export/import
 ├── database/
 │   └── meetings/              # Per-meeting KuzuDB directories (auto-created on first analysis)
 ├── docs/
-├── scripts/
 ├── requirements.txt
 └── README.md
 ```

@@ -50,7 +50,7 @@ ollama pull qwen2.5:14b
 ### 3) Run
 
 ```bash
-streamlit run interfaces/streamlit_app/app.py
+streamlit run streamlit_app/app.py
 ```
 
 ## Agent Tools
@@ -101,10 +101,9 @@ SpeakNode/
 │       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer)
 │       ├── hybrid_rag.py      # Hybrid RAG engine
 │       └── tools/             # ToolRegistry + 7 tools
-├── interfaces/
-│   └── streamlit_app/
-│       ├── app.py             # Streamlit app (meeting selection, analysis, agent UI)
-│       └── view_components.py # Graph viewer, node editor, PNG export/import
+├── streamlit_app/
+│   ├── app.py             # Streamlit app (meeting selection, analysis, agent UI)
+│   └── view_components.py # Graph viewer, node editor, PNG export/import
 ├── database/
 │   └── meetings/              # Per-meeting KuzuDB directories (auto-created)
 ├── docs/
