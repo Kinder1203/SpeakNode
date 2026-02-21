@@ -53,7 +53,6 @@ class SpeakNodeEngine:
                     logger.info("Loading LLM extractor...")
                     self._extractor = Extractor(config=self.config)
         return self._extractor
-        return self._extractor
 
     def transcribe(self, audio_path: str) -> list[dict] | None:
         """Run STT on an audio file and return segments."""

@@ -530,22 +530,26 @@ class KuzuManager:
         # AnalysisResult Pydantic model <-> dict compatibility
         if hasattr(analysis_result, "to_dict"):
             analysis_result = analysis_result.to_dict()
+
+        # topic_keys built in T1 is needed in T2 for MENTIONS edges
+        topic_keys_by_plain: dict[str, str] = {}
+
+        # ── Transaction 1: Core data (People / Topics / Tasks / Decisions) ─────
+        # Must always succeed. Failure here is fatal and raised to caller.
         try:
             with self._transaction():
-                topic_keys_by_plain: dict[str, str] = {}
-
-                # Person node
+                # Person nodes
                 for p in analysis_result.get("people", []):
                     self.conn.execute(
                         "MERGE (p:Person {name: $name})",
                         {"name": p['name']}
                     )
                     self.conn.execute(
-                        "MATCH (p:Person {name: $name}) SET p.role = $role", 
+                        "MATCH (p:Person {name: $name}) SET p.role = $role",
                         {"name": p['name'], "role": p.get('role', 'Member')}
                     )
 
-                # Topic node and relationship
+                # Topic nodes and relationships
                 for t in analysis_result.get("topics", []):
                     plain_title = str(t.get("title", "")).strip()
                     if not plain_title:
@@ -564,14 +568,13 @@ class KuzuManager:
                             "MATCH (p:Person {name: $name}), (t:Topic {title: $title}) MERGE (p)-[:PROPOSED]->(t)",
                             {"name": t['proposer'], "title": plain_title}
                         )
-                    # Meeting ↔ Topic connect
                     if meeting_id:
                         self.conn.execute(
                             "MATCH (m:Meeting {id: $mid}), (t:Topic {title: $title}) MERGE (m)-[:DISCUSSED]->(t)",
                             {"mid": meeting_id, "title": plain_title}
                         )
 
-                # Task node and relationship
+                # Task nodes and relationships
                 for task in analysis_result.get("tasks", []):
                     desc_text = str(task.get('description', '')).strip() or "No Description"
                     status = normalize_task_status(task.get("status", "pending"))
@@ -602,16 +605,18 @@ class KuzuManager:
                             {"mid": meeting_id, "task_desc": desc_text},
                         )
 
-                # Decision node and relationship
+                # Decision nodes and relationships
                 for d in analysis_result.get("decisions", []):
                     desc_text = str(d.get('description', '')).strip() or "No Description"
-                    self.conn.execute("MERGE (d:Decision {description: $decision_desc})", {"decision_desc": desc_text})
+                    self.conn.execute(
+                        "MERGE (d:Decision {description: $decision_desc})",
+                        {"decision_desc": desc_text}
+                    )
                     if meeting_id:
                         self.conn.execute(
                             "MATCH (m:Meeting {id: $mid}), (d:Decision {description: $decision_desc}) MERGE (m)-[:HAS_DECISION]->(d)",
                             {"mid": meeting_id, "decision_desc": desc_text},
                         )
-
                     if d.get('related_topic'):
                         plain_related_topic = str(d.get("related_topic", "")).strip()
                         resolved_topic_key = topic_keys_by_plain.get(plain_related_topic, plain_related_topic)
@@ -620,8 +625,18 @@ class KuzuManager:
                             {"title": resolved_topic_key, "decision_desc": desc_text}
                         )
 
-                # Entity node and relationships
-                entity_keys_by_plain: dict[str, str] = {}
+            logger.info("Core knowledge graph ingested (people/topics/tasks/decisions).")
+        except Exception:
+            logger.exception("Core data ingest error — rolling back")
+            raise
+
+        # ── Transaction 2: Entities & Relations (best-effort) ──────────────────
+        # Entity ingestion is isolated so that LLM noise (bad names, duplicates)
+        # cannot corrupt or roll back the core graph built in T1.
+        entity_keys_by_plain: dict[str, str] = {}
+        try:
+            with self._transaction():
+                # Entity nodes
                 for ent in analysis_result.get("entities", []):
                     ent_name = str(ent.get("name", "")).strip()
                     if not ent_name:
@@ -637,13 +652,12 @@ class KuzuManager:
                         "MATCH (e:Entity {name: $name}) SET e.entity_type = $etype, e.description = $edescription",
                         {"name": ent_name, "etype": ent_type, "edescription": ent_desc},
                     )
-                    # Meeting ↔ Entity connect
                     if meeting_id:
                         self.conn.execute(
                             "MATCH (m:Meeting {id: $mid}), (e:Entity {name: $ename}) MERGE (m)-[:HAS_ENTITY]->(e)",
                             {"mid": meeting_id, "ename": ent_name},
                         )
-                    # Also create Person node for person-type entities
+                    # Mirror person-type entity as a Person node
                     if ent_type == "person":
                         self.conn.execute(
                             "MERGE (p:Person {name: $name})",
@@ -654,7 +668,7 @@ class KuzuManager:
                             {"name": ent_name},
                         )
 
-                # Entity-Entity relations
+                # Entity-Entity RELATED_TO edges
                 for rel in analysis_result.get("relations", []):
                     src = str(rel.get("source", "")).strip()
                     tgt = str(rel.get("target", "")).strip()
@@ -667,7 +681,7 @@ class KuzuManager:
                         {"src": src, "tgt": tgt, "rtype": rel_type},
                     )
 
-                # Topic ↔ Entity connections (MENTIONS)
+                # Topic ↔ Entity MENTIONS edges
                 for plain_title in topic_keys_by_plain:
                     topic_data = next(
                         (t for t in analysis_result.get("topics", [])
@@ -685,10 +699,15 @@ class KuzuManager:
                                 {"ttitle": plain_title, "ename": ent_name},
                             )
 
-            logger.info("Knowledge graph ingested.")
+            logger.info("Entity data ingested (%d entities).", len(entity_keys_by_plain))
         except Exception:
-            logger.exception("Analysis data ingest error")
-            raise
+            logger.warning(
+                "Entity/relation ingest failed (non-fatal) — core graph is intact. "
+                "Check extractor output for malformed entity names."
+            )
+            logger.debug("Entity ingest exception detail:", exc_info=True)
+
+        logger.info("Knowledge graph ingested.")
 
     def create_meeting(self, meeting_id: str, title: str, date: str = "", source_file: str = "") -> str:
         """Create a Meeting node."""
