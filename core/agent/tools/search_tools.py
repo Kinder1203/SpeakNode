@@ -261,11 +261,14 @@ def search_by_structure(args: dict, db, rag) -> str:
 
 @registry.register(
     "hybrid_search",
-    "의미 + 구조 결합 검색. 인자: query(str). 복합적인 질문에 사용."
+    "의미 + 구조 결합 검색. 인자: query(str), search_hints(list[str], 선택). 복합적인 질문에 사용."
 )
 def hybrid_search(args: dict, db, rag) -> str:
     query = (args.get("query") or args.get("keyword") or "").strip()
     top_k = _to_int(args.get("top_k", 5), 5)
     graph_k = _to_int(args.get("graph_k", 8), 8)
-    result = rag.hybrid_search(query, db, top_k=top_k, graph_k=graph_k)
+    search_hints = args.get("search_hints") or []
+    if not isinstance(search_hints, list):
+        search_hints = []
+    result = rag.hybrid_search(query, db, top_k=top_k, graph_k=graph_k, search_hints=search_hints)
     return result.get("merged_context", "(결과 없음)")

@@ -86,9 +86,6 @@ Hard rules:
                 continue
             description = str(item.get("description", "")).strip()
             related_topic = str(item.get("related_topic", "")).strip()
-            
-            if not related_topic and topics:
-                related_topic = topics[0].title
 
             if not description:
                 continue

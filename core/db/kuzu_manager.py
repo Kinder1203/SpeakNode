@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from contextlib import contextmanager
 
 import kuzu
@@ -694,6 +695,9 @@ class KuzuManager:
                         logger.debug("RELATED_TO edge skipped: %s", _e)
 
                 # Topic ↔ Entity MENTIONS edges
+                # Skip very short entity names (<=1 char) to avoid spurious matches.
+                # Use regex word-boundary matching to reduce noise from substring hits.
+                _MIN_ENTITY_LEN_FOR_MENTIONS = 2
                 for plain_title in topic_keys_by_plain:
                     topic_data = next(
                         (t for t in analysis_result.get("topics", [])
@@ -704,7 +708,17 @@ class KuzuManager:
                         continue
                     topic_text = f"{plain_title} {topic_data.get('summary', '')}"
                     for ent_name in entity_keys_by_plain:
-                        if ent_name in topic_text:
+                        if len(ent_name) < _MIN_ENTITY_LEN_FOR_MENTIONS:
+                            continue
+                        # Use word-boundary regex for ASCII names,
+                        # plain `in` check for CJK names (\b doesn't work for CJK).
+                        is_ascii_name = ent_name.isascii()
+                        if is_ascii_name:
+                            pattern = r'\b' + re.escape(ent_name) + r'\b'
+                            matched = bool(re.search(pattern, topic_text, re.IGNORECASE))
+                        else:
+                            matched = ent_name in topic_text
+                        if matched:
                             try:
                                 self.conn.execute(
                                     "MATCH (t:Topic {title: $ttitle}), (e:Entity {name: $ename}) "
@@ -715,10 +729,13 @@ class KuzuManager:
                                 logger.debug("MENTIONS edge skipped: %s", _e)
 
             logger.info("Entity data ingested (%d entities).", len(entity_keys_by_plain))
-        except Exception:
+        except Exception as ent_exc:
+            entity_names_debug = list(entity_keys_by_plain.keys())[:10]
             logger.warning(
                 "Entity/relation ingest failed (non-fatal) — core graph is intact. "
-                "Check extractor output for malformed entity names."
+                "Failed entity names (first 10): %s. Error: %s",
+                entity_names_debug,
+                ent_exc,
             )
             logger.debug("Entity ingest exception detail:", exc_info=True)
 
@@ -763,6 +780,7 @@ class KuzuManager:
         if keyword:
             rows = self.execute_cypher(
                 "MATCH (t:Task) OPTIONAL MATCH (p:Person)-[:ASSIGNED_TO]->(t) "
+                "WITH t, p "
                 "WHERE t.description CONTAINS $kw OR t.status CONTAINS $kw OR p.name CONTAINS $kw "
                 "RETURN t.description, t.deadline, t.status, p.name "
                 "LIMIT $lim",

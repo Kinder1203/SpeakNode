@@ -183,6 +183,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         if keyword:
             rows = db.execute_cypher(
                 "MATCH (d:Decision) OPTIONAL MATCH (t:Topic)-[:RESULTED_IN]->(d) "
+                "WITH d, t "
                 "WHERE d.description CONTAINS $kw OR t.title CONTAINS $kw "
                 "RETURN d.description LIMIT $lim",
                 {"kw": keyword, "lim": limit},
@@ -219,19 +220,37 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
         except Exception:
             return []
 
-    def hybrid_search(self, query: str, db: KuzuManager, top_k: int = 5, graph_k: int = 8) -> dict:
-        """Fuse vector and graph search results into a single context."""
-        query = (query or "").strip()
-        q = query.lower()
+    def hybrid_search(
+        self, query: str, db: KuzuManager, top_k: int = 5, graph_k: int = 8,
+        search_hints: list[str] | None = None,
+    ) -> dict:
+        """Fuse vector and graph search results into a single context.
 
-        ask_tasks = any(token in q for token in ["할 일", "task", "todo", "담당", "액션"])
-        ask_decisions = any(token in q for token in ["결정", "합의", "decision"])
-        ask_people = any(token in q for token in ["참여", "누가", "사람", "담당자", "person"])
-        ask_meetings = any(token in q for token in ["회의", "meeting", "요약", "언제"])
-        ask_entities = any(token in q for token in [
-            "기술", "개념", "조직", "이벤트", "entity", "무엇", "뭐", "어떤",
-            "관계", "연결", "관련", "역사", "발전",
-        ])
+        Args:
+            search_hints: LLM-determined intent categories (e.g. ["task", "people"]).
+                          When provided, these override the keyword-based fallback.
+        """
+        query = (query or "").strip()
+        hints = set(h.strip().lower() for h in (search_hints or []) if isinstance(h, str))
+
+        if hints:
+            # LLM Router provided semantic intent — use it directly.
+            ask_tasks = "task" in hints
+            ask_decisions = "decision" in hints
+            ask_people = "people" in hints
+            ask_meetings = "meeting" in hints
+            ask_entities = "entity" in hints
+        else:
+            # Fallback: keyword-based intent detection (backward compatibility).
+            q = query.lower()
+            ask_tasks = any(token in q for token in ["할 일", "task", "todo", "담당", "액션"])
+            ask_decisions = any(token in q for token in ["결정", "합의", "decision"])
+            ask_people = any(token in q for token in ["참여", "누가", "사람", "담당자", "person"])
+            ask_meetings = any(token in q for token in ["회의", "meeting", "요약", "언제"])
+            ask_entities = any(token in q for token in [
+                "기술", "개념", "조직", "이벤트", "entity", "무엇", "뭐", "어떤",
+                "관계", "연결", "관련", "역사", "발전",
+            ])
 
         # Vector Search
         vector_results = self.vector_search(query, db, top_k=top_k)

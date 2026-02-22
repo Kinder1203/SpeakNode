@@ -71,8 +71,21 @@ Rules (in priority order):
    - include keyword when relevant
 6. Questions about a specific person (e.g. "김태훈에 대해") → "search_by_structure"
    - set entity_type to "person" and keyword to the person's name
-7. For ALL other questions → "hybrid_search" (default choice)
+7. Precise DB queries requiring exact counts, aggregation, or complex filtering → "search_by_cypher"
+   - include tool_args.query as the natural language question
+   - e.g. "몇 개의 토픽이 있어?", "결정 사항이 없는 토픽은?", "가장 많이 발언한 사람은?"
+8. For ALL other questions → "hybrid_search" (default choice)
    - include tool_args.query as the full user question
+   - include tool_args.search_hints as a list of relevant data categories to search:
+     "task" = action items, to-dos, assignments, progress, deadlines
+     "decision" = agreements, conclusions, approvals, commitments
+     "people" = participants, speakers, who did what
+     "meeting" = meeting info, dates, schedules
+     "entity" = technologies, concepts, organizations, events, relationships
+   - Example: "진행 상황 어때?" → {{"query": "진행 상황 어때?", "search_hints": ["task"]}}
+   - Example: "React 관련 내용" → {{"query": "React 관련 내용", "search_hints": ["entity"]}}
+   - Example: "누가 뭘 하기로 했어?" → {{"query": "누가 뭘 하기로 했어?", "search_hints": ["task", "people", "decision"]}}
+   - If unsure, include multiple relevant hints rather than none
    - This includes: complex questions, multi-aspect queries, concept questions, relationship questions, analysis requests, and any ambiguous queries
 """
 
