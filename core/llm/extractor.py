@@ -102,7 +102,7 @@ Hard rules:
                 continue
             tasks.append(Task(description=description, assignee=assignee, status="pending"))
 
-        # --- Entity extraction ---
+        # Entity extraction 
         entities = []
         entity_names_seen: set[str] = set()
         for item in data.get("entities", []):
@@ -118,7 +118,7 @@ Hard rules:
             description = str(item.get("description", "")).strip()
             entities.append(Entity(name=name, entity_type=entity_type, description=description))
 
-        # --- Relation extraction ---
+        # Relation extraction 
         relations = []
         for item in data.get("relations", []):
             if not isinstance(item, dict):
@@ -132,7 +132,7 @@ Hard rules:
             if source in entity_names_seen and target in entity_names_seen:
                 relations.append(Relation(source=source, target=target, relation_type=relation_type))
 
-        # --- People extraction (from topics + tasks + entities) ---
+        # People extraction (from topics + tasks + entities) 
         people_set = set()
         for t in topics:
             if t.proposer and t.proposer not in ["Unknown", "None"]:

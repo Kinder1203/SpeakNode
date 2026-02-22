@@ -1,4 +1,4 @@
-"""Process-wide singleton cache for SentenceTransformer models."""
+# Process-wide singleton cache for SentenceTransformer models.
 
 from __future__ import annotations
 

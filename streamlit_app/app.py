@@ -58,7 +58,7 @@ def get_meeting_label(meeting_id: str) -> str:
         return meeting_id
 
 
-# ── Session state initialisation ──────────────────────────────────────────────
+# Initialize session state.
 _defaults: dict = {
     "analysis_result": None,
     "active_meeting_id": None,
@@ -69,7 +69,7 @@ for _k, _v in _defaults.items():
     if _k not in st.session_state:
         st.session_state[_k] = _v
 
-# ── Custom CSS ─────────────────────────────────────────────────────────────────
+# Apply custom CSS.
 st.markdown(
     """
     <style>
@@ -85,13 +85,13 @@ st.markdown(
 
 vc.render_header()
 
-# ── SIDEBAR ───────────────────────────────────────────────────────────────────
+# Sidebar.
 current_db_path: str | None = None
 
 with st.sidebar:
     st.markdown("---")
 
-    # ── New meeting upload ─────────────────────────────────────────────────────
+    # New meeting upload.
     with st.expander("🎤 새 회의 분석", expanded=True):
         uploaded_audio = st.file_uploader(
             "오디오 파일 (MP3, WAV, M4A)",
@@ -111,7 +111,7 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ── Meeting list ───────────────────────────────────────────────────────────
+    # Meeting list.
     st.markdown("**📁 회의 목록**")
     meeting_ids = list_meeting_ids(_config)
 
@@ -152,7 +152,7 @@ with st.sidebar:
 
     st.markdown("---")
 
-    # ── Page navigation (only when analysis is loaded) ─────────────────────────
+    # Page navigation (only after analysis is loaded).
     if st.session_state["analysis_result"]:
         _pages = ["📊 분석 결과", "🧠 지식 그래프", "💬 AI Agent"]
         _cur_page = st.session_state.get("current_page", _pages[0])
@@ -169,7 +169,7 @@ with st.sidebar:
     st.caption(f"🤖 모델: `{_config.llm_model}`")
 
 
-# ── AUDIO ANALYSIS ─────────────────────────────────────────────────────────────
+# Audio analysis pipeline.
 if uploaded_audio and analyze_btn:
     ext = os.path.splitext(uploaded_audio.name)[1] or ".mp3"
     tmp_fd, temp_audio = tempfile.mkstemp(suffix=ext, prefix="speaknode_")
@@ -224,12 +224,12 @@ if uploaded_audio and analyze_btn:
 
     st.rerun()
 
-# ── MAIN CONTENT ───────────────────────────────────────────────────────────────
+# Main content.
 if not st.session_state["analysis_result"]:
-    # ── Welcome / onboarding page ──────────────────────────────────────────────
+    # Welcome and onboarding.
     vc.render_welcome_page()
 
-    # Allow importing a saved graph image
+    # Allow importing a previously exported graph image.
     restored_data = vc.render_import_card_ui(share_mgr)
     if restored_data:
         bundle_format = restored_data.get("format") if isinstance(restored_data, dict) else ""
@@ -266,11 +266,11 @@ else:
     active_meeting_id = st.session_state.get("active_meeting_id", "")
     current_page      = st.session_state.get("current_page", "📊 분석 결과")
 
-    # Ensure current_db_path is set even when arriving from selectbox route
+    # Ensure `current_db_path` is set when arriving from selectbox navigation.
     if not current_db_path and active_meeting_id:
         current_db_path = get_meeting_db_path(active_meeting_id, _config)
 
-    # ── 분석 결과 ─────────────────────────────────────────────────────────────
+    # Analysis results page.
     if current_page == "📊 분석 결과":
         meeting_label = get_meeting_label(active_meeting_id) if active_meeting_id else ""
         st.markdown(f"### 📊 분석 결과")
@@ -279,7 +279,7 @@ else:
 
         vc.display_analysis_cards(result)
 
-    # ── 지식 그래프 ───────────────────────────────────────────────────────────
+    # Knowledge graph page.
     elif current_page == "🧠 지식 그래프":
         meeting_label = get_meeting_label(active_meeting_id) if active_meeting_id else ""
         st.markdown("### 🧠 지식 그래프")
@@ -291,12 +291,12 @@ else:
             st.divider()
             vc.render_graph_editor(current_db_path)
             st.divider()
-            # Save section is inline — no tab switching needed
+            # Keep save controls inline on this page.
             vc.render_save_section(current_db_path, result)
         else:
             st.info("이 회의의 그래프 데이터가 아직 없습니다.")
 
-    # ── AI Agent ───────────────────────────────────────────────────────────────
+    # AI agent page.
     elif current_page == "💬 AI Agent":
         st.markdown("### 💬 AI Agent")
         st.caption("회의 데이터를 기반으로 대화하세요. 이메일 작성 초안도 지원합니다.")
@@ -306,12 +306,12 @@ else:
             st.session_state[history_key] = []
         chat_history: list[dict] = st.session_state[history_key]
 
-        # Render existing messages
+        # Render existing chat messages.
         for msg in chat_history:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Show suggestion buttons when chat is empty
+        # Show suggested prompts when chat is empty.
         if not chat_history:
             st.markdown("**💡 예시 질문**")
             ex_cols = st.columns(3)

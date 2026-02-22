@@ -1,4 +1,4 @@
-"""Tool: direct answers that do not require DB lookup."""
+# direct answers that do not require DB lookup.
 
 from __future__ import annotations
 
@@ -10,4 +10,4 @@ from core.agent.tools import default_registry as registry
     "DB 검색이 필요 없는 일반적인 질문에 직접 답변합니다. 인자: 없음."
 )
 def direct_answer(args: dict, db, rag) -> str:
-    return ""  # 직접 답변 — Synthesizer가 LLM으로 응답 생성
+    return ""  # Synthesizer generates response with LLM

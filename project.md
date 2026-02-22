@@ -126,13 +126,15 @@ DB lifecycle is managed per `query()` invocation scope.
 SpeakNode/
 ├── core/
 │   ├── config.py              # Central config + meeting DB path helpers (sanitize_meeting_id, get_meeting_db_path, list_meeting_ids)
-│   ├── domain.py              # Pydantic domain models (Utterance, Person, Topic, Task, Decision, Entity, Relation, Meeting, AnalysisResult)
+│   ├── domain.py              # Pydantic domain models (Utterance, Person, Topic, Task, Decision, Entity, Relation, Meeting, AnalysisResult, MeetingSummary)
 │   ├── utils.py               # Task status normalization, LLM token estimation
 │   ├── embedding.py           # SentenceTransformer singleton cache (thread-safe double-check)
 │   ├── pipeline.py            # SpeakNodeEngine: STT → Embed → LLM → DB pipeline (lazy loading, thread-safe locks, metadata.json output)
 │   ├── stt/transcriber.py     # Faster-Whisper STT + optional pyannote diarization
 │   ├── llm/extractor.py       # Ollama structured extraction (conservative Korean signal + entity extraction)
-│   ├── db/kuzu_manager.py     # KuzuDB manager (schema v3, plain-text PKs, vector search, export/import)
+│   ├── db/
+│   │   ├── kuzu_manager.py    # KuzuDB manager (schema v3, plain-text PKs, vector search, export/import)
+│   │   └── check_db.py        # CLI diagnostic: node counts, table list, Topic samples per meeting
 │   ├── shared/share_manager.py # PNG metadata sharing (zlib + base64, speaknode_graph_bundle_v1)
 │   └── agent/
 │       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer)
@@ -144,6 +146,8 @@ SpeakNode/
 ├── database/
 │   └── meetings/              # Per-meeting KuzuDB directories (auto-created on first analysis)
 ├── docs/
+│   ├── index.html             # Interactive knowledge graph demo
+│   └── demos/                 # Demo assets
 ├── requirements.txt
 └── README.md
 ```

@@ -1,4 +1,4 @@
-"""Tool: meeting summary retrieval."""
+# meeting summary retrieval.
 
 from __future__ import annotations
 

@@ -43,12 +43,12 @@ def _check_single(meeting_id: str, config: SpeakNodeConfig) -> None:
         with KuzuManager(db_path=db_path, config=config) as db:
             print("    ✅ DB 연결 성공")
 
-            # table list
+            # List tables.
             print("\n    --- 테이블 목록 ---")
             for row in db.execute_cypher("CALL show_tables() RETURN *"):
                 print(f"        📄 {row}")
 
-            # node count
+            # Count nodes by label.
             print("\n    --- 노드 카운트 ---")
             for table in _NODE_TABLES:
                 try:
@@ -58,7 +58,7 @@ def _check_single(meeting_id: str, config: SpeakNodeConfig) -> None:
                 except Exception:
                     pass
 
-            # Topic sample
+            # Show sample Topic rows.
             print("\n    --- Topic 데이터 ---")
             topics = db.execute_cypher("MATCH (t:Topic) RETURN t.title, t.summary")
             if not topics:

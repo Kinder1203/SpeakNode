@@ -56,7 +56,7 @@ class Transcriber:
                 logger.warning("Diarization load failed (continuing): %s", e)
 
     def _assign_speakers(self, segments: list[dict], diarization_result) -> list[dict]:
-        """Match diarization turns to STT segments by timestamp overlap."""
+        # Match diarization turns to STT segments by timestamp overlap.
         for seg in segments:
             seg_mid = (seg["start"] + seg["end"]) / 2.0
             best_speaker = "Unknown"
@@ -76,7 +76,7 @@ class Transcriber:
         return segments
 
     def transcribe(self, audio_path: str) -> list[dict] | None:
-        """Transcribe an audio file and return timestamped segments."""
+        # Transcribe an audio file and return timestamped segments.
         if not os.path.exists(audio_path):
             logger.error("File not found: %s", audio_path)
             return None

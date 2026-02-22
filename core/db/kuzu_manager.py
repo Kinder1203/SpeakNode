@@ -17,7 +17,7 @@ class KuzuManager:
         if db_path is None:
             db_path = cfg.get_meeting_db_path()
             
-        # Create parent directory if needed
+        # Ensure parent directory exists.
         parent_dir = os.path.dirname(db_path)
         if parent_dir and not os.path.exists(parent_dir):
             os.makedirs(parent_dir, exist_ok=True)
@@ -36,7 +36,7 @@ class KuzuManager:
             raise
         logger.debug("KuzuDB connected: %s", db_path)
 
-    # Context Manager 
+    # Context manager support.
     def __enter__(self):
         return self
 
@@ -118,7 +118,7 @@ class KuzuManager:
         previous_id = None
         ingested_count = 0
         
-        # Validate embedding/segment count before entering transaction
+        # Validate segment/embedding alignment before opening a transaction.
         if embeddings is not None and len(embeddings) != len(segments):
             raise ValueError(
                 f"Embedding count mismatch: segments={len(segments)}, embeddings={len(embeddings)}"
@@ -220,7 +220,7 @@ class KuzuManager:
             },
         }
 
-        # Nodes
+        # Export nodes.
         for r in self.execute_cypher("MATCH (m:Meeting) RETURN m.id, m.title, m.date, m.source_file"):
             dump["nodes"]["meetings"].append(
                 {"id": r[0], "title": r[1], "date": r[2], "source_file": r[3]}
@@ -252,7 +252,7 @@ class KuzuManager:
                     {"id": r[0], "text": r[1], "start": r[2], "end": r[3]}
                 )
 
-        # Edges
+        # Export edges.
         for r in self.execute_cypher(
             "MATCH (p:Person)-[:PROPOSED]->(t:Topic) RETURN p.name, t.title"
         ):
@@ -290,7 +290,7 @@ class KuzuManager:
         ):
             dump["edges"]["has_decision"].append({"meeting_id": r[0], "decision": r[1]})
 
-        # Entity nodes (graceful fallback for old DBs)
+        # Export entity nodes and edges; gracefully skip legacy DBs.
         try:
             for r in self.execute_cypher("MATCH (e:Entity) RETURN e.name, e.entity_type, e.description"):
                 dump["nodes"]["entities"].append(
@@ -311,7 +311,7 @@ class KuzuManager:
             ):
                 dump["edges"]["has_entity"].append({"meeting_id": r[0], "entity": r[1]})
         except Exception:
-            # Old DB without Entity table — skip silently
+            # Legacy DB may not include the Entity schema.
             pass
 
         return dump
@@ -327,7 +327,7 @@ class KuzuManager:
         has_embeddings_missing = False
 
         with self._transaction():
-            # Nodes restore
+            # Restore nodes.
             for item in nodes.get("meetings", []):
                 meeting_id = item.get("id", "")
                 if not meeting_id:
@@ -416,7 +416,7 @@ class KuzuManager:
                     },
                 )
 
-            # Edges resotre
+            # Restore edges.
             for item in edges.get("proposed", []):
                 if not item.get("person") or not item.get("topic"):
                     continue
@@ -481,7 +481,7 @@ class KuzuManager:
                     {"mid": item.get("meeting_id", ""), "decision_desc": item.get("decision", "")},
                 )
 
-            # Entity nodes (schema_version >= 3, graceful skip for v2 dumps)
+            # Restore entity schema data (available in newer dumps).
             for item in nodes.get("entities", []):
                 ent_name = item.get("name", "")
                 if not ent_name:
@@ -533,25 +533,25 @@ class KuzuManager:
 
     def ingest_data(self, analysis_result: dict, meeting_id: str | None = None) -> None:
         """Ingest LLM-extracted analysis data. Wrapped in a transaction."""
-        # AnalysisResult Pydantic model <-> dict compatibility
+        # Support both AnalysisResult models and plain dictionaries.
         if hasattr(analysis_result, "to_dict"):
             analysis_result = analysis_result.to_dict()
 
-        # topic_keys built in T1 is needed in T2 for MENTIONS edges
+        # Topic keys from transaction 1 are reused in transaction 2 for MENTIONS edges.
         topic_keys_by_plain: dict[str, str] = {}
 
-        # ── Transaction 1: Core data (People / Topics / Tasks / Decisions) ─────
-        # Must always succeed. Failure here is fatal and raised to caller.
+        # Transaction 1: ingest core graph data (people/topics/tasks/decisions).
+        # This stage is mandatory; failures are propagated to the caller.
         try:
             with self._transaction():
-                # Person nodes
+                # Ingest people.
                 for p in analysis_result.get("people", []):
                     self.conn.execute(
                         "MERGE (p:Person {name: $name}) SET p.role = $role",
                         {"name": p['name'], "role": p.get('role', 'Member')}
                     )
 
-                # Topic nodes and relationships
+                # Ingest topics and their core relationships.
                 for t in analysis_result.get("topics", []):
                     plain_title = str(t.get("title", "")).strip()
                     if not plain_title:
@@ -580,7 +580,7 @@ class KuzuManager:
                         except Exception as _e:
                             logger.debug("DISCUSSED edge skipped: %s", _e)
 
-                # Task nodes and relationships
+                # Ingest tasks and assignment relationships.
                 for task in analysis_result.get("tasks", []):
                     desc_text = str(task.get('description', '')).strip() or "No Description"
                     status = normalize_task_status(task.get("status", "pending"))
@@ -611,7 +611,7 @@ class KuzuManager:
                         except Exception as _e:
                             logger.debug("HAS_TASK edge skipped: %s", _e)
 
-                # Decision nodes and relationships
+                # Ingest decisions and related edges.
                 for d in analysis_result.get("decisions", []):
                     desc_text = str(d.get('description', '')).strip() or "No Description"
                     self.conn.execute(
@@ -644,13 +644,12 @@ class KuzuManager:
             logger.exception("Core data ingest error — rolling back")
             raise
 
-        # ── Transaction 2: Entities & Relations (best-effort) ──────────────────
-        # Entity ingestion is isolated so that LLM noise (bad names, duplicates)
-        # cannot corrupt or roll back the core graph built in T1.
+        # Transaction 2: ingest entities and relations in best-effort mode.
+        # Isolation prevents noisy LLM output from rolling back the core graph.
         entity_keys_by_plain: dict[str, str] = {}
         try:
             with self._transaction():
-                # Entity nodes
+                # Ingest entities.
                 for ent in analysis_result.get("entities", []):
                     ent_name = str(ent.get("name", "")).strip()
                     if not ent_name:
@@ -671,14 +670,14 @@ class KuzuManager:
                             )
                         except Exception as _e:
                             logger.debug("HAS_ENTITY edge skipped: %s", _e)
-                    # Mirror person-type entity as a Person node
+                    # Mirror person-type entities as Person nodes.
                     if ent_type == "person":
                         self.conn.execute(
                             "MERGE (p:Person {name: $name}) SET p.role = 'Member'",
                             {"name": ent_name},
                         )
 
-                # Entity-Entity RELATED_TO edges
+                # Ingest RELATED_TO edges between entities.
                 for rel in analysis_result.get("relations", []):
                     src = str(rel.get("source", "")).strip()
                     tgt = str(rel.get("target", "")).strip()
@@ -694,9 +693,9 @@ class KuzuManager:
                     except Exception as _e:
                         logger.debug("RELATED_TO edge skipped: %s", _e)
 
-                # Topic ↔ Entity MENTIONS edges
-                # Skip very short entity names (<=1 char) to avoid spurious matches.
-                # Use regex word-boundary matching to reduce noise from substring hits.
+                # Ingest Topic-Entity MENTIONS edges.
+                # Skip very short names to reduce false positives.
+                # Use word-boundary matching for ASCII names to avoid substring noise.
                 _MIN_ENTITY_LEN_FOR_MENTIONS = 2
                 for plain_title in topic_keys_by_plain:
                     topic_data = next(
@@ -710,8 +709,8 @@ class KuzuManager:
                     for ent_name in entity_keys_by_plain:
                         if len(ent_name) < _MIN_ENTITY_LEN_FOR_MENTIONS:
                             continue
-                        # Use word-boundary regex for ASCII names,
-                        # plain `in` check for CJK names (\b doesn't work for CJK).
+                        # Use regex boundaries for ASCII names.
+                        # Use substring checks for CJK names (`\b` is not reliable).
                         is_ascii_name = ent_name.isascii()
                         if is_ascii_name:
                             pattern = r'\b' + re.escape(ent_name) + r'\b'

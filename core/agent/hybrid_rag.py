@@ -1,4 +1,4 @@
-"""Hybrid RAG engine combining vector and graph search."""
+# Hybrid RAG engine combining vector and graph search.
 
 import json
 import logging
@@ -32,7 +32,7 @@ FORBIDDEN_CYPHER_TOKENS = (
 
 
 class HybridRAG:
-    """Vector + Graph fusion search engine."""
+    # Vector + Graph fusion search engine.
 
     def __init__(self, config: SpeakNodeConfig = None):
         self.config = config or SpeakNodeConfig()
@@ -287,7 +287,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
             "entity_relations": entity_relations,
         }
 
-        # ── Enrich: topics → proposer + decisions ──
+        # Enrich: topics → proposer + decisions 
         for t in topics:
             raw_title = t.get("id", t["title"])
             try:
@@ -309,7 +309,7 @@ For user-facing keyword filtering, prefer CONTAINS over exact equality.
             except Exception:
                 t["decisions"] = []
 
-        # ── Enrich: people → proposed topics + assigned tasks ──
+        # Enrich: people → proposed topics + assigned tasks 
         for p in people:
             name = p.get("name", "")
             try:

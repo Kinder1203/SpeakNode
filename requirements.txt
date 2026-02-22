@@ -27,5 +27,6 @@ networkx==3.3
 matplotlib==3.10.8
 Pillow==11.0.0
 
-# Optional: speaker diarization
-# pyannote.audio==3.3.0  # requires HuggingFace token
+# Optional: speaker diarization (set enable_diarization=True and hf_token in SpeakNodeConfig)
+# pip install pyannote.audio==3.3.0
+# Requires a HuggingFace token with access to pyannote/speaker-diarization-3.1

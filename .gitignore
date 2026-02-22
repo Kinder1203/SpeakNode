@@ -27,7 +27,13 @@ htmlcov/
 # Per-meeting KuzuDB directories are auto-created on first run.
 database/
 
-# Temporary audio files created at project root during analysis
+# Defensive ignore for any audio scratch files placed in the project root.
+# Note: the pipeline uses tempfile.mkstemp() which writes to the OS temp
+# directory, so these patterns are precautionary only.
+speaknode_*.mp3
+speaknode_*.wav
+speaknode_*.m4a
+speaknode_*.ogg
 temp_*.mp3
 temp_*.wav
 temp_*.m4a

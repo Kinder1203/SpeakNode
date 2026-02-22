@@ -43,7 +43,7 @@ class AgentState(TypedDict):
 
 
 def router_node(state: AgentState, llm: ChatOllama) -> AgentState:
-    """Analyze the user query and select an appropriate tool."""
+    # Analyze the user query and select an appropriate tool.
     user_messages = state["messages"]
 
     MAX_ROUTER_MESSAGES = 10
@@ -112,7 +112,7 @@ Rules (in priority order):
 def tool_executor_node(
     state: AgentState, db: KuzuManager, rag: HybridRAG
 ) -> AgentState:
-    """Execute the selected tool via the registry."""
+    # Execute the selected tool via the registry.
     result = tool_registry.execute(
         state.get("tool_name", "direct_answer"),
         state.get("tool_args", {}),
@@ -184,7 +184,7 @@ Cite specific data from the results. If results are empty, let the user know.
 
 
 class SpeakNodeAgent:
-    """LangGraph-based agent with per-query DB lifecycle."""
+    # LangGraph-based agent with per-query DB lifecycle.
 
     def __init__(self, db_path: str, config: SpeakNodeConfig | None = None):
         self.config = config or SpeakNodeConfig()

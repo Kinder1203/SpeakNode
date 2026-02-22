@@ -1,4 +1,4 @@
-"""Decorator-based tool registry for the SpeakNode agent."""
+# Decorator-based tool registry for the SpeakNode agent.
 
 from __future__ import annotations
 
@@ -14,8 +14,6 @@ class ToolInfo:
 
 
 class ToolRegistry:
-    """Name-based tool dispatcher with decorator registration."""
-
     def __init__(self):
         self._tools: dict[str, ToolInfo] = {}
 
@@ -57,5 +55,5 @@ class ToolRegistry:
         return len(self._tools)
 
 
-# 전역 레지스트리 인스턴스 (모듈 로드 시 Tool 자동 수집용)
+# Global registry instance
 default_registry = ToolRegistry()

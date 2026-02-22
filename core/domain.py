@@ -1,4 +1,4 @@
-"""Pydantic domain models shared across all modules."""
+# Pydantic domain models shared across all modules.
 
 from __future__ import annotations
 

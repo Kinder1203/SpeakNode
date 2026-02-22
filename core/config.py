@@ -1,4 +1,4 @@
-"""Central configuration for all SpeakNode modules."""
+# Central configuration for all SpeakNode modules.
 import os
 import re as _re
 from dataclasses import dataclass, field

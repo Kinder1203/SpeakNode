@@ -1,4 +1,4 @@
-"""Tools: vector, graph, and hybrid search."""
+# vector, graph, and hybrid search.
 
 from __future__ import annotations
 from core.agent.tools import default_registry as registry
@@ -145,7 +145,7 @@ def search_by_structure(args: dict, db, rag) -> str:
             name = p['name']
             lines.append(f"### {name} ({p.get('role', 'Member')})")
 
-            # 제안 토픽
+            # Suggested Topics
             try:
                 topic_rows = db.execute_cypher(
                     "MATCH (p:Person {name: $name})-[:PROPOSED]->(t:Topic) "
@@ -159,7 +159,7 @@ def search_by_structure(args: dict, db, rag) -> str:
             except Exception:
                 pass
 
-            # 할당된 태스크
+            # assigned task
             try:
                 tasks = rag.graph_search_tasks(db, person_name=name, limit=limit)
                 if tasks:
@@ -169,7 +169,7 @@ def search_by_structure(args: dict, db, rag) -> str:
             except Exception:
                 pass
 
-            # 발언 (최근 5개)
+            # Speeches (last 5)
             try:
                 utt_rows = db.execute_cypher(
                     "MATCH (p:Person {name: $name})-[:SPOKE]->(u:Utterance) "
@@ -184,7 +184,7 @@ def search_by_structure(args: dict, db, rag) -> str:
             except Exception:
                 pass
 
-            # 관련 엔티티
+            # Related Entities
             try:
                 ent_rows = db.execute_cypher(
                     "MATCH (p:Person {name: $name})-[:SPOKE]->(:Utterance)<-[:CONTAINS]-(m:Meeting)-[:HAS_ENTITY]->(e:Entity) "

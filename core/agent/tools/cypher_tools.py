@@ -1,4 +1,4 @@
-"""Tool: translate natural language to read-only Cypher queries."""
+# translate natural language to read-only Cypher queries.
 
 from __future__ import annotations
 

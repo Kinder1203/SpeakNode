@@ -1,4 +1,4 @@
-"""Tool: draft meeting follow-up emails."""
+# draft meeting follow-up emails.
 
 from __future__ import annotations
 

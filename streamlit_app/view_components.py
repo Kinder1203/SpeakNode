@@ -18,7 +18,7 @@ from core.utils import normalize_task_status, TASK_STATUS_OPTIONS
 logger = logging.getLogger(__name__)
 _config = SpeakNodeConfig()
 
-# ── Node style constants matching docs/index.html ─────────────────────────────
+# Node style constants aligned with docs/index.html.
 _NODE_COLORS = {
     "meeting":   "#60a5fa",
     "person":    "#a855f7",
@@ -45,7 +45,7 @@ _NODE_EMOJI = {
     "meeting": "📅", "person": "👤", "topic": "💡",
     "task": "✅", "decision": "⚖️", "entity": "🔗", "utterance": "💬",
 }
-# Glow (translucent background) colors matching index.html NODE_CFG
+# Glow colors aligned with index.html NODE_CFG.
 _NODE_GLOW = {
     "meeting":   "rgba(96,165,250,0.3)",
     "person":    "rgba(168,85,247,0.3)",
@@ -55,7 +55,7 @@ _NODE_GLOW = {
     "entity":    "rgba(236,72,153,0.25)",
     "utterance": "rgba(6,182,212,0.2)",
 }
-# Edge style config matching index.html EDGE_CFG
+# Edge style config aligned with index.html EDGE_CFG.
 _EDGE_CFG: dict[str, dict] = {
     "DISCUSSED":    {"color": "rgba(96,165,250,0.5)",  "w": 2,   "dash": False},
     "PROPOSED":     {"color": "rgba(168,85,247,0.5)",  "w": 2,   "dash": False},
@@ -88,7 +88,7 @@ def _set_korean_font():
         logger.debug("CJK font setup skipped: %s", e)
 
 
-# ── Header ────────────────────────────────────────────────────────────────────
+# Header.
 
 def render_header():
     st.markdown(
@@ -108,7 +108,7 @@ def render_header():
     )
 
 
-# ── Welcome / Onboarding ──────────────────────────────────────────────────────
+# Welcome and onboarding.
 
 def render_welcome_page():
     st.markdown(
@@ -148,7 +148,7 @@ def render_welcome_page():
             )
 
 
-# ── Analysis Cards ────────────────────────────────────────────────────────────
+# Analysis cards.
 
 def render_sidebar():
     with st.sidebar:
@@ -165,7 +165,7 @@ def display_analysis_cards(result):
     relations = result.get("relations", [])
     people    = result.get("people", [])
 
-    # Summary metric row
+    # Summary metrics.
     m1, m2, m3, m4, m5 = st.columns(5)
     for col, (label, val) in zip(
         [m1, m2, m3, m4, m5],
@@ -239,7 +239,7 @@ def display_analysis_cards(result):
 
 
 
-# ── Knowledge Graph (vis-network) ────────────────────────────────────────────
+# Knowledge graph (vis-network).
 
 def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
     """Return a self-contained vis-network HTML page matching docs/index.html style."""
@@ -307,7 +307,7 @@ def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
         "  layout:{improvedLayout:false}"
         "};"
         "const network=new vis.Network(container,{nodes:nodesDS,edges:edgesDS},opts);"
-        # Utterance toggle
+        # Utterance visibility toggle.
         "document.getElementById('toggle-utt').addEventListener('change',function(){"
         "  const show=this.checked;"
         "  const uttIds=RAW_NODES.filter(n=>n._type==='utterance').map(n=>n.id);"
@@ -316,7 +316,7 @@ def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
         "    .filter(e=>uttIds.includes(e.from)||uttIds.includes(e.to)).map(e=>e.id);"
         "  uttEids.forEach(id=>edgesDS.update({id,hidden:!show}));"
         "});"
-        # Click detail panel
+        # Node detail panel interaction.
         "const typeLabel={"
         "  meeting:'📅 회의',person:'👤 인물',topic:'💡 주제',"
         "  task:'✅ 할 일',decision:'⚖️ 결정',entity:'🔗 엔티티',utterance:'💬 발언'"
@@ -347,7 +347,7 @@ def _build_vis_html(nodes_json: str, edges_json: str, height: int = 640) -> str:
         "  }"
         "  panel.innerHTML=html||'<span style=\"color:#475569\">데이터 없음</span>';"
         "});"
-        # Double-click zoom
+        # Double-click zoom.
         "network.on('doubleClick',function(params){"
         "  if(params.nodes.length){"
         "    network.focus(params.nodes[0],{scale:1.5,"
@@ -420,7 +420,7 @@ def render_graph_view(db_path: str):
                     "hidden": hidden,
                 })
 
-            # ── Meeting nodes ─────────────────────────────────────────────────
+            # Meeting nodes.
             for mid, mtitle, mdate, msrc in mgr.execute_cypher(
                 "MATCH (m:Meeting) RETURN m.id, m.title, m.date, m.source_file"
             ):
@@ -431,7 +431,7 @@ def render_graph_view(db_path: str):
                     {"ID": mid, "제목": mtitle, "날짜": mdate, "파일": msrc},
                 )
 
-            # ── Person nodes ──────────────────────────────────────────────────
+            # Person nodes.
             for pname, prole in mgr.execute_cypher("MATCH (p:Person) RETURN p.name, p.role"):
                 _add_node(
                     f"person::{pname}",
@@ -440,7 +440,7 @@ def render_graph_view(db_path: str):
                     {"이름": pname, "역할": prole or "Member"},
                 )
 
-            # ── Topic nodes ───────────────────────────────────────────────────
+            # Topic nodes.
             for ttitle, tsummary in mgr.execute_cypher("MATCH (t:Topic) RETURN t.title, t.summary"):
                 _add_node(
                     f"topic::{ttitle}",
@@ -449,7 +449,7 @@ def render_graph_view(db_path: str):
                     {"제목": ttitle, "요약": tsummary or ""},
                 )
 
-            # ── Task nodes ────────────────────────────────────────────────────
+            # Task nodes.
             for tdesc, tdue, tstatus in mgr.execute_cypher(
                 "MATCH (t:Task) RETURN t.description, t.deadline, t.status"
             ):
@@ -461,7 +461,7 @@ def render_graph_view(db_path: str):
                     {"내용": tdesc, "마감": tdue or "TBD", "상태": tstatus or ""},
                 )
 
-            # ── Decision nodes ────────────────────────────────────────────────
+            # Decision nodes.
             for (ddesc,) in mgr.execute_cypher("MATCH (d:Decision) RETURN d.description"):
                 lbl = (ddesc[:22] + "…") if ddesc and len(ddesc) > 22 else ddesc
                 _add_node(
@@ -471,7 +471,7 @@ def render_graph_view(db_path: str):
                     {"결정": ddesc},
                 )
 
-            # ── Utterance nodes (hidden by default) ───────────────────────────
+            # Utterance nodes (hidden by default).
             for uid, utext, ustart, uend in mgr.execute_cypher(
                 "MATCH (u:Utterance) RETURN u.id, u.text, u.startTime, u.endTime LIMIT 200"
             ):
@@ -484,7 +484,7 @@ def render_graph_view(db_path: str):
                     hidden=True,
                 )
 
-            # ── Entity nodes ──────────────────────────────────────────────────
+            # Entity nodes.
             try:
                 for ename, etype, edesc in mgr.execute_cypher(
                     "MATCH (e:Entity) RETURN e.name, e.entity_type, e.description"
@@ -498,7 +498,7 @@ def render_graph_view(db_path: str):
             except Exception:
                 pass  # Old DB without Entity table — skip silently
 
-            # ── Edges ─────────────────────────────────────────────────────────
+            # Graph edges.
             for topic, decision in mgr.execute_cypher(
                 "MATCH (t:Topic)-[:RESULTED_IN]->(d:Decision) RETURN t.title, d.description"
             ):
@@ -529,7 +529,7 @@ def render_graph_view(db_path: str):
             ):
                 _add_edge(f"meeting::{mid}", f"decision::{ddesc}", rel_type="HAS_DECISION")
 
-            # Utterance edges (hidden by default)
+            # Utterance edges (hidden by default).
             for pname, uid in mgr.execute_cypher(
                 "MATCH (p:Person)-[:SPOKE]->(u:Utterance) RETURN p.name, u.id LIMIT 200"
             ):
@@ -545,7 +545,7 @@ def render_graph_view(db_path: str):
             ):
                 _add_edge(f"meeting::{mid}", f"utterance::{uid}", rel_type="CONTAINS", hidden=True)
 
-            # Entity edges
+            # Entity edges.
             try:
                 for src, rtype, tgt in mgr.execute_cypher(
                     "MATCH (a:Entity)-[r:RELATED_TO]->(b:Entity) RETURN a.name, r.relation_type, b.name"
@@ -746,7 +746,7 @@ def render_graph_editor(db_path: str):
             logger.exception("Graph editor error")
 
 
-# ── Save / Export ─────────────────────────────────────────────────────────────
+# Save and export.
 
 def render_save_section(db_path: str, analysis_json: dict):
     """Inline save controls — renders inside the Knowledge Graph page (no tab switch)."""
@@ -882,7 +882,7 @@ def generate_static_graph_image(db_path: str, analysis_json: dict, include_embed
         return None
 
 
-# ── Import Card UI ────────────────────────────────────────────────────────────
+# Import card UI.
 
 def render_import_card_ui(share_manager):
     st.divider()

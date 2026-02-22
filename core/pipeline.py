@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class SpeakNodeEngine:
-    """Lazy-loading AI engine: STT -> Embedding -> LLM -> DB."""
+    # Lazy-loading AI engine: STT -> Embedding -> LLM -> DB.
 
     def __init__(self, config: SpeakNodeConfig = None):
         self.config = config or SpeakNodeConfig()
@@ -150,7 +150,7 @@ class SpeakNodeEngine:
 
             db.ingest_transcript(segments, embeddings, meeting_id=meeting_id)
 
-            # Step 3: LLM extraction
+            # LLM extraction
             _progress("extraction", 50, "LLM 추출 준비 중...")
             _progress("extraction", 55, "LLM으로 주제/할일 추출 중...")
             logger.info("Extracting topics/tasks...")
@@ -172,7 +172,7 @@ class SpeakNodeEngine:
 
             _progress("extraction", 70, "주제/할일 추출 완료")
 
-            # Step 4: Knowledge graph ingest
+            # Knowledge graph ingest
             _progress("graph", 80, "지식 그래프 구축 중...")
             logger.info("Building knowledge graph...")
             db.ingest_data(analysis_data, meeting_id=meeting_id)

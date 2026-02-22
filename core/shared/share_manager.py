@@ -13,9 +13,8 @@ MAX_EMBEDDED_PAYLOAD_BYTES = 32 * 1024 * 1024
 
 
 class ShareManager:
-    """PNG 이미지에 SpeakNode 분석 데이터를 임베딩·추출하는 매니저."""
+    # Embeds and extracts SpeakNode analysis payloads in PNG metadata.
 
-    # ── 카드 렌더링 상수 ──
     _CARD_SIZE = (800, 480)
     _STATUS_COLORS = {
         "pending": (245, 158, 11),
@@ -36,10 +35,9 @@ class ShareManager:
             os.makedirs(output_dir)
         self.output_dir = output_dir
 
-    # ── 내부: 폰트 로딩 ──
     @staticmethod
     def _load_fonts() -> dict:
-        """OS별 CJK 호환 폰트를 5종 사이즈로 로딩한다."""
+        """Load CJK-capable fonts for card rendering across operating systems."""
         if os.name == "nt":
             candidates = [
                 "C:/Windows/Fonts/malgun.ttf",
@@ -72,34 +70,33 @@ class ShareManager:
         default = ImageFont.load_default()
         return {k: default for k in ("title", "heading", "body", "small", "mono")}
 
-    # ── 내부: 카드 이미지 렌더링 ──
     def _draw_card(self, data: dict) -> Image.Image:
-        """분석 결과(data)를 시각화한 800×480 Knowledge-Graph 카드 이미지를 반환."""
+        """Render an 800x480 knowledge-graph summary card from analysis data."""
         W, H = self._CARD_SIZE
         img = Image.new("RGB", (W, H), color=(15, 15, 35))
         draw = ImageDraw.Draw(img)
         fonts = self._load_fonts()
 
-        # ── 배경 그리드 (그래프 느낌) ──
+        # Draw background grid.
         grid_color = (96, 165, 250, 8)
         for x in range(0, W, 32):
             draw.line([(x, 0), (x, H)], fill=grid_color, width=1)
         for y in range(0, H, 32):
             draw.line([(0, y), (W, y)], fill=grid_color, width=1)
 
-        # ── 상단 악센트 라인 ──
+        # Draw top accent line.
         draw.rectangle([(0, 0), (W, 3)], fill=(96, 165, 250))
 
-        # ── 타이틀 ──
+        # Render title.
         topics = data.get("topics", [])
         title_text = topics[0]["title"] if topics else "SpeakNode Summary"
         draw.text((30, 18), title_text, fill=(229, 231, 235), font=fonts["title"])
 
-        # ── 브랜딩 ──
+        # Render branding.
         draw.text((W - 130, 14), "SpeakNode", fill=(96, 165, 250), font=fonts["heading"])
         draw.text((W - 160, 34), "Knowledge Graph", fill=(75, 85, 99), font=fonts["small"])
 
-        # ── Stats 뱃지 ──
+        # Render metric badges.
         bx, by = 30, 68
         for label, key, color in self._BADGE_DEFS:
             count = len(data.get(key, []))
@@ -115,10 +112,10 @@ class ShareManager:
             draw.text((bx + 17, by + 3), text, fill=(209, 213, 219), font=fonts["small"])
             bx += tw + 10
 
-        # ── 구분선 ──
+        # Draw section divider.
         draw.line([(30, 100), (W - 30, 100)], fill=(255, 255, 255, 15), width=1)
 
-        # ── Topics 섹션 ──
+        # Render top topics.
         y = 115
         draw.text((30, y), "Topics", fill=(34, 197, 94), font=fonts["heading"])
         y += 24
@@ -133,7 +130,7 @@ class ShareManager:
                     y += 15
             y += 6
 
-        # ── Tasks 섹션 ──
+        # Render top tasks.
         tasks = data.get("tasks", [])
         if y < H - 120 and tasks:
             y += 4
@@ -148,7 +145,7 @@ class ShareManager:
                 draw.text((50, y), task_text, fill=(209, 213, 219), font=fonts["small"])
                 y += 18
 
-        # ── 하단 브랜딩 바 ──
+        # Render footer bar.
         draw.rectangle([(0, H - 32), (W, H)], fill=(0, 0, 0, 100))
         draw.text(
             (12, H - 24),
@@ -159,7 +156,6 @@ class ShareManager:
 
         return img
 
-    # ── 공개 API ──
     def create_card(
         self,
         data: dict,
@@ -170,22 +166,22 @@ class ShareManager:
         """Generate a Knowledge-Graph summary card with data embedded in PNG metadata.
 
         Args:
-            data: 분석 결과 dict (topics, tasks 등). 카드 비주얼 렌더링에 사용.
-            filename: 저장할 파일 이름.
-            payload: PNG 메타데이터에 임베딩할 dict.
-                     주어지지 않으면 *data* 자체를 임베딩한다 (하위호환).
+            data: Analysis payload used to render the visual card.
+            filename: Output PNG filename.
+            payload: Payload to embed in PNG metadata.
+                If omitted, `data` is embedded for backward compatibility.
         """
         safe_filename = os.path.basename(filename) or "meeting_card.png"
 
-        # 카드 이미지 렌더링
+        # Render card image.
         img = self._draw_card(data)
 
-        # 메타데이터 임베딩: payload가 있으면 payload를, 없으면 data를
+        # Embed payload into PNG metadata.
         embed_data = payload if payload is not None else data
         metadata = PngInfo()
         metadata.add_text("speaknode_data_zlib_b64", self._encode_payload(embed_data))
 
-        # 저장
+        # Save image.
         save_path = os.path.join(self.output_dir, safe_filename)
         img.save(save_path, "PNG", pnginfo=metadata)
         logger.info("Share card created: %s", save_path)

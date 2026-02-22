@@ -89,13 +89,15 @@ Standard task statuses: `pending`, `in_progress`, `done`, `blocked`
 SpeakNode/
 ├── core/
 │   ├── config.py              # Central config + meeting DB path helpers
-│   ├── domain.py              # Pydantic domain models
+│   ├── domain.py              # Pydantic domain models (incl. MeetingSummary)
 │   ├── utils.py               # Task status normalization, token estimation
 │   ├── embedding.py           # SentenceTransformer singleton
 │   ├── pipeline.py            # SpeakNodeEngine: STT → Embed → LLM → DB
 │   ├── stt/transcriber.py     # Faster-Whisper + optional pyannote diarization
 │   ├── llm/extractor.py       # Ollama structured extraction
-│   ├── db/kuzu_manager.py     # KuzuDB manager (schema v3, CRUD, vector search, export/import)
+│   ├── db/
+│   │   ├── kuzu_manager.py    # KuzuDB manager (schema v3, CRUD, vector search, export/import)
+│   │   └── check_db.py        # DB diagnostic utility (node counts, topic samples)
 │   ├── shared/share_manager.py # PNG metadata graph sharing
 │   └── agent/
 │       ├── agent.py           # LangGraph agent (Router → Tool → Synthesizer)
@@ -107,7 +109,8 @@ SpeakNode/
 ├── database/
 │   └── meetings/              # Per-meeting KuzuDB directories (auto-created)
 ├── docs/
-├── scripts/
+│   ├── index.html             # Interactive knowledge graph demo
+│   └── demos/                 # Demo assets
 ├── requirements.txt
 └── README.md
 ```
